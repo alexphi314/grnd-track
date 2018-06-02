@@ -9,10 +9,9 @@ load coastlines;
 plotm(coastlat,coastlon);
 
 if length(inputLong) > 0 && length(inputLat) > 0
-    plotm(inputLong,inputLat);
+    plotm(inputLat,inputLong,'*k');
 end
 
 print('ground_track.jpg','-djpeg');
 
 end
-
