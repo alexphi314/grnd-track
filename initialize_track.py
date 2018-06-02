@@ -74,13 +74,11 @@ def geo2ecef(time):
     d = time.day
     hr = time.hour
     min = time.minute
-    sec = time.sec
+    sec = time.second
 
-    j0 = 367.0*y - math.trunc((7.0*(y+math.trunc((m+9)/12.0)))/4.0) +
-    math.trunc(275.0*m/9.0) + d + 1721013.5
+    j0 = 367.0*y - math.trunc((7.0*(y+math.trunc((m+9)/12.0)))/4.0) + math.trunc(275.0*m/9.0) + d + 1721013.5
     T0 = (j0 - 2451545.0)/36525.0
     thet_g0 = 100.4606184 + 36000.77004*T0 + 0.000387933*math.pow(T0,2) - 2.583e-8*math.pow(T0,3)
-    print(thet_g0)
 
     thet_g0 = thet_g0 % 360.0
     if thet_g0 < 0:
@@ -181,7 +179,6 @@ times = np.linspace(0,24*3600,N);
 for time in times:
     ## Define the time
     l_time = tp + datetime.timedelta(seconds=time)
-    print(l_time)
 
     ## Define M, E, and w (true anomaly)
     M = 2.0*math.pi*time/T
@@ -216,8 +213,6 @@ for time in times:
 
 ## Plot
 print(max(lats))
-for lat in lats:
-    print(lat)
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
 eng.plot_track(mat_lats,mat_lons,nargout=0)
