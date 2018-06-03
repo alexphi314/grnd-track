@@ -139,22 +139,18 @@ with open("ic.kep","r") as f:
     epoch = ic[0]
     a0 = float(ic[1])
     e0 = float(ic[2])
-    i0 = float(ic[3])
-    w0 = float(ic[4])
-    O0 = float(ic[5])
-    wp0 = float(ic[6])
+    i0 = math.radians(float(ic[3]))
+    w0 = math.radians(float(ic[4]))
+    O0 = math.radians(float(ic[5]))
+    wp0 = math.radians(float(ic[6]))
 
 ## Determine rate of change of O and wp
-i_rad = i0*math.pi/180.0
 coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
-#dO = coef*math.cos(i_rad)
-dO = 0
-#dwp = coef*(2.5*pow(math.sin(i_rad),2)-2)
-dwp = 0
+dO = coef*math.cos(i0)
+dwp = coef*(2.5*pow(math.sin(i0),2)-2)
 
 ## Calculate time since perigee passage
-w0_rad = w0*math.pi/180.0
-E_coef = math.sqrt((1-e0)/(1+e0))*math.tan(w0_rad/2.0)
+E_coef = math.sqrt((1-e0)/(1+e0))*math.tan(w0/2.0)
 E0 = 2.0*math.atan(E_coef)
 if E0 < 0:
     E0 += 2*math.pi
@@ -174,8 +170,9 @@ P = pow(h,2)/Mew
 ## Main loop -> generate matrix of rs and vs
 lats = []
 longs = []
-N = int(24*3600/60)
-times = np.linspace(0,24*3600,N);
+end_time = T
+N = int(end_time/60)
+times = np.linspace(0,end_time,N);
 for time in times:
     ## Define the time
     l_time = tp + datetime.timedelta(seconds=time)
@@ -212,7 +209,6 @@ for time in times:
     longs.append(lon*180/math.pi)
 
 ## Plot
-print(max(lats))
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
 eng.plot_track(mat_lats,mat_lons,nargout=0)
