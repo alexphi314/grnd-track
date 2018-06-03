@@ -1,5 +1,10 @@
 ## Import modules
 import math; import datetime; import numpy as np; import matlab.engine; import os;
+import argparse;
+
+#################
+### Functions ###
+#################
 
 def solve_kepler(M,e):
     ## Purpose: Given mean anomaly and eccentricity, return eccentric anomaly
@@ -115,6 +120,29 @@ def get_latlon(r):
 
     return dec,ra
 
+#####################################################
+### 01. Initializing variables and getting inputs ###
+#####################################################
+
+## Define argument parsing
+parser = argparse.ArgumentParser(description="Process initial conditions")
+group = parser.add_mutually_exclusive_group()
+group.add_argument("--kep", dest="tle", action="store_false",
+default="true",
+help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)\n  semi-major axis (m)\n  eccentricity\n  inclination (deg)\n  true anomaly (deg)\n  RAAN (deg)\n  argument of perigee (deg)\n")
+group.add_argument("--tle", dest="tle", action="store_true",
+default="true",help="Initial conditions are in the tle.txt format (default: tle)\n")
+parser.add_argument('initial conditions', metavar = "ic_file",
+help="file holding initial conditions")
+parser.add_argument("-end_time", dest="end_time", default="T",
+help="Number of minutes to simulate the ground track. Default: one revolution")
+args = vars(parser.parse_args())
+
+## Define input args
+ic_file = args["initial conditions"]
+ic_tle = args["tle"]
+end_time = args["end_time"]
+
 ## Define constants
 J2 = 1.08263e-3;
 G = 6.67e-11;
@@ -125,7 +153,7 @@ eng = matlab.engine.start_matlab()
 eng.addpath(os.getcwd()+"/")
 
 ## Read text file with orbit initial conditions (ic.kep)
-with open("ic.kep","r") as f:
+with open(ic_file,"r") as f:
     ## Format is:
     ##   epoch (UTC)
     ##   semi-major axis (m)
@@ -136,6 +164,7 @@ with open("ic.kep","r") as f:
     ##   argument of perigee (deg)
     ic = f.read()
     ic = ic.split("\n")
+
     epoch = ic[0]
     a0 = float(ic[1])
     e0 = float(ic[2])
@@ -143,6 +172,10 @@ with open("ic.kep","r") as f:
     w0 = math.radians(float(ic[4]))
     O0 = math.radians(float(ic[5]))
     wp0 = math.radians(float(ic[6]))
+
+#######################################
+### 02. Calculate starting position ###
+#######################################
 
 ## Determine rate of change of O and wp
 coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
@@ -167,10 +200,21 @@ print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
 h = math.sqrt(Mew*a0*(1-pow(e0,2)))
 P = pow(h,2)/Mew
 
-## Main loop -> generate matrix of rs and vs
+#################################################################
+### 03. Main loop: step through times and get a lat/lon point ###
+#################################################################
+
+## Main loop -> generate matrix of lats and longs
 lats = []
 longs = []
-end_time = T
+
+if end_time == "T":
+    end_time = T
+    print("Generating ground track for one revolution")
+else:
+    print("Generating ground track for " + end_time + " minutes.")
+    end_time = float(end_time)*60
+
 N = int(end_time/60)
 times = np.linspace(0,end_time,N);
 for time in times:
@@ -197,6 +241,7 @@ for time in times:
     foo = matlab.double(bar)
 
     #qg_ecef = eng.dcmeci2ecef('IAU-2000/2006',foo)
+
     qg_ecef = geo2ecef(l_time)
     qg_ecef = np.asarray(qg_ecef)
     r_ecef = np.matmul(qg_ecef,r_geo)
