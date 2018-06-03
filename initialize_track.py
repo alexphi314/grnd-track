@@ -132,16 +132,20 @@ default="true",
 help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)\n  semi-major axis (m)\n  eccentricity\n  inclination (deg)\n  true anomaly (deg)\n  RAAN (deg)\n  argument of perigee (deg)\n")
 group.add_argument("--tle", dest="tle", action="store_true",
 default="true",help="Initial conditions are in the tle.txt format (default: tle)\n")
-parser.add_argument('initial conditions', metavar = "ic_file",
+parser.add_argument('-ic', metavar = "ic_file",
 help="file holding initial conditions")
 parser.add_argument("-end_time", dest="end_time", default="T",
 help="Number of minutes to simulate the ground track. Default: one revolution")
 args = vars(parser.parse_args())
 
 ## Define input args
-ic_file = args["initial conditions"]
+ic_file = args["ic"]
 ic_tle = args["tle"]
 end_time = args["end_time"]
+
+print(ic_file)
+print(ic_tle)
+print(end_time)
 
 ## Define constants
 J2 = 1.08263e-3;
