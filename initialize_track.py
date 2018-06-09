@@ -120,6 +120,23 @@ def get_latlon(r):
 
     return dec,ra
 
+def get_dO_dwp(a0,e0,i0,Re,Mew,J2):
+    ## Purpose: Calculate rate of change of RAAN and wp
+
+    ## Inputs:
+    ##   a0: sma (m)
+    ##   e0: eccentricity
+    ##   i0: inclination (rad)
+    ##   Re: Radius of Earth (m)
+    ##   Mew: graviational constant
+    ##   J2: J2 constant
+
+    coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
+    dO = coef*math.cos(i0)
+    dwp = coef*(2.5*pow(math.sin(i0),2)-2)
+
+    return dO,dwp
+
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -147,9 +164,9 @@ if ic_file == None:
     parser.print_help()
     raise Exception("Must supply a file with input arguments.")
 
-print(ic_file)
-print(ic_tle)
-print(end_time)
+#print(ic_file)
+#print(ic_tle)
+#print(end_time)
 
 ## Define constants
 J2 = 1.08263e-3;
@@ -188,9 +205,7 @@ if not ic_tle:
     #######################################
 
     ## Determine rate of change of O and wp
-    coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
-    dO = coef*math.cos(i0)
-    dwp = coef*(2.5*pow(math.sin(i0),2)-2)
+    dO,dwp = get_dO_dwp(a0,e0,i0,Re,Mew,J2)
 
     ## Calculate time since perigee passage
     E_coef = math.sqrt((1-e0)/(1+e0))*math.tan(w0/2.0)
@@ -201,17 +216,64 @@ if not ic_tle:
     T = 2.0*math.pi*pow(a0,1.5)/math.sqrt(Mew)
     dt = (M0*T)/2.0/math.pi ## units of seconds
     print(str(dt)+" seconds since perigee passage.")
+    h = math.sqrt(Mew*a0*(1-pow(e0,2)))
+    P = pow(h,2)/Mew
 
     ## Define times
     t0 = datetime.datetime.strptime(epoch,"%Y-%m-%d %H:%M:%S")
     print("Epoch: " + str(t0))
     tp = t0 - datetime.timedelta(seconds=dt)
     print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
-    h = math.sqrt(Mew*a0*(1-pow(e0,2)))
-    P = pow(h,2)/Mew
 
 else:
     print("Now parsing input tle")
+    with open(ic_file,"r") as f:
+        line1 = f.readline()
+        line2 = f.readline()
+
+    ## Read tle
+    sat_num = line1[2:7]
+    epoch_year = line1[18:20]
+    epoch_day = line1[20:32]
+    i0 = math.radians(float(line2[8:16]))
+    O0 = math.radians(float(line2[17:25]))
+    e0 = float("."+line2[26:33])
+    wp0 = math.radians(float(line2[34:42]))
+    M0 = math.radians(float(line2[43:51]))
+    n = float(line2[52:63])*2*math.pi/86400 #rad/s
+
+    ## Calculate values
+    E0 = solve_kepler(M0,e0)
+    w0 = calc_w(E0,e0)
+    a0 = math.pow(Mew/math.pow(n,2),float(1/3))
+    T = 2.0*math.pi*pow(a0,1.5)/math.sqrt(Mew)
+    dt = M0/n
+    dO, dwp = get_dO_dwp(a0,e0,i0,Re,Mew,J2)
+    print(str(dt) + " seconds since perigee passage.")
+    h = math.sqrt(Mew*a0*(1-pow(e0,2)))
+    P = pow(h,2)/Mew
+
+    ## Define times
+    if int(epoch_year) > datetime.datetime.now().year:
+        year = "19" + str(epoch_year)
+    else:
+        year = "20" + str(epoch_year)
+
+    frac,doy = math.modf(float(epoch_day))
+    frac,hour = math.modf(frac*24)
+    frac,min = math.modf(frac*60)
+    frac,sec = math.modf(frac*60)
+
+    if doy < 10:
+        doy = "00" + str(doy)
+    elif doy < 100:
+        doy = "0" + str(doy)
+
+    epoch = str(year)+"-"+str(int(doy))+" "+str(int(hour))+":"+str(int(min))+":"+str(int(sec))+"."+str(frac)[2:6]
+    t0 = datetime.datetime.strptime(epoch,"%Y-%j %H:%M:%S.%f")
+    print("Epoch: " + str(t0))
+    tp = t0 - datetime.timedelta(seconds=dt)
+    print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
 
 #################################################################
 ### 03. Main loop: step through times and get a lat/lon point ###
