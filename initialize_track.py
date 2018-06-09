@@ -143,6 +143,10 @@ ic_file = args["ic"]
 ic_tle = args["tle"]
 end_time = args["end_time"]
 
+if ic_file == None:
+    parser.print_help()
+    raise Exception("Must supply a file with input arguments.")
+
 print(ic_file)
 print(ic_tle)
 print(end_time)
@@ -156,53 +160,58 @@ Re = 6378.37e3; #m
 eng = matlab.engine.start_matlab()
 eng.addpath(os.getcwd()+"/")
 
-## Read text file with orbit initial conditions (ic.kep)
-with open(ic_file,"r") as f:
-    ## Format is:
-    ##   epoch (UTC)
-    ##   semi-major axis (m)
-    ##   eccentricity
-    ##   inclination (deg)
-    ##   true anomaly (deg)
-    ##   RAAN (deg)
-    ##   argument of perigee (deg)
-    ic = f.read()
-    ic = ic.split("\n")
+if not ic_tle:
+    print("Now parsing input Keplerian orbit elements")
+    ## Read text file with orbit initial conditions (ic.kep)
+    with open(ic_file,"r") as f:
+        ## Format is:
+        ##   epoch (UTC)
+        ##   semi-major axis (m)
+        ##   eccentricity
+        ##   inclination (deg)
+        ##   true anomaly (deg)
+        ##   RAAN (deg)
+        ##   argument of perigee (deg)
+        ic = f.read()
+        ic = ic.split("\n")
 
-    epoch = ic[0]
-    a0 = float(ic[1])
-    e0 = float(ic[2])
-    i0 = math.radians(float(ic[3]))
-    w0 = math.radians(float(ic[4]))
-    O0 = math.radians(float(ic[5]))
-    wp0 = math.radians(float(ic[6]))
+        epoch = ic[0]
+        a0 = float(ic[1])
+        e0 = float(ic[2])
+        i0 = math.radians(float(ic[3]))
+        w0 = math.radians(float(ic[4]))
+        O0 = math.radians(float(ic[5]))
+        wp0 = math.radians(float(ic[6]))
 
-#######################################
-### 02. Calculate starting position ###
-#######################################
+    #######################################
+    ### 02. Calculate starting position ###
+    #######################################
 
-## Determine rate of change of O and wp
-coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
-dO = coef*math.cos(i0)
-dwp = coef*(2.5*pow(math.sin(i0),2)-2)
+    ## Determine rate of change of O and wp
+    coef = -((3*math.sqrt(Mew)*J2*math.pow(Re,2))/(2*pow((1-pow(e0,2)),2)*pow(a0,3.5)))
+    dO = coef*math.cos(i0)
+    dwp = coef*(2.5*pow(math.sin(i0),2)-2)
 
-## Calculate time since perigee passage
-E_coef = math.sqrt((1-e0)/(1+e0))*math.tan(w0/2.0)
-E0 = 2.0*math.atan(E_coef)
-if E0 < 0:
-    E0 += 2*math.pi
-M0 = E0-e0*math.sin(E0)
-T = 2.0*math.pi*pow(a0,1.5)/math.sqrt(Mew)
-dt = (M0*T)/2.0/math.pi ## units of seconds
-print(str(dt)+" seconds since perigee passage.")
+    ## Calculate time since perigee passage
+    E_coef = math.sqrt((1-e0)/(1+e0))*math.tan(w0/2.0)
+    E0 = 2.0*math.atan(E_coef)
+    if E0 < 0:
+        E0 += 2*math.pi
+    M0 = E0-e0*math.sin(E0)
+    T = 2.0*math.pi*pow(a0,1.5)/math.sqrt(Mew)
+    dt = (M0*T)/2.0/math.pi ## units of seconds
+    print(str(dt)+" seconds since perigee passage.")
 
-## Define times
-t0 = datetime.datetime.strptime(epoch,"%Y-%m-%d %H:%M:%S")
-print("Epoch: " + str(t0))
-tp = t0 - datetime.timedelta(seconds=dt)
-print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
-h = math.sqrt(Mew*a0*(1-pow(e0,2)))
-P = pow(h,2)/Mew
+    ## Define times
+    t0 = datetime.datetime.strptime(epoch,"%Y-%m-%d %H:%M:%S")
+    print("Epoch: " + str(t0))
+    tp = t0 - datetime.timedelta(seconds=dt)
+    print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
+    h = math.sqrt(Mew*a0*(1-pow(e0,2)))
+    P = pow(h,2)/Mew
+
+else:
+    print("Now parsing input tle")
 
 #################################################################
 ### 03. Main loop: step through times and get a lat/lon point ###
