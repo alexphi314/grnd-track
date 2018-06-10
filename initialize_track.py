@@ -214,7 +214,7 @@ if rc_file != None:
 
         comps = coord.split('-')
         foo = float(comps[0])+float(comps[1])/60+float(comps[2])/3600
-        ref_coords.append(foo*sign)
+        ref_coords.append(math.radians(foo*sign))
 
 if not ic_tle:
     print("Now parsing input Keplerian orbit elements")
@@ -329,11 +329,16 @@ else:
     print("Generating ground track for " + end_time + " minutes.")
     end_time = float(end_time)*60
 
-loop_time = 86400*3
+loop_time = 86400*5
 N = int(loop_time/60)
 times = np.linspace(0,loop_time,N)
 vis_t = []
 vis_a = []
+vis_lats = []
+vis_lons = []
+elevs = []
+prev_elev = 999
+lim = math.radians(50)
 for time in times:
     ## Define the time
     l_time = tp + datetime.timedelta(seconds=time)
@@ -375,17 +380,30 @@ for time in times:
     if rc_file != None:
         dist = haversine(ref_coords,[lat,lon],Re)
         h = r - Re
+        print(dist)
+        print(h)
 
-        elev = math.atan2(h,dist)
-        if elev > 0:
+        elev = math.atan(h/dist)
+        elevs.append(elev)
+        if elev > lim:
             vis_t.append(l_time)
             vis_a.append(elev)
+            vis_lats.append(math.degrees(lat))
+            vis_lons.append(math.degrees(lon))
+
+        if elev < lim and prev_elev > lim and prev_elev != 999:
+            print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
+            + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(round(math.degrees(max(vis_a)),0)))
+            eng.plot_track(matlab.double(vis_lats),matlab.double(vis_lons),matlab.double([math.degrees(ref_coords[0]),math.degrees(ref_coords[1])]),'pass.jpg',nargout=0)
+            vis_t = []
+            vis_a = []
+            vis_lats = []
+            vis_lons = []
+
+        prev_elev = elev
 
 ## Plot
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
-eng.plot_track(mat_lats,mat_lons,nargout=0)
-
-if rc_file != None:
-    print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
-    + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(math.degrees(max(vis_a))))
+print(math.degrees(max(elevs)))
+eng.plot_track(mat_lats,mat_lons,matlab.double([]),'ground_track.jpg',nargout=0)

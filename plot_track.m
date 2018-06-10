@@ -1,4 +1,4 @@
-function [] = plot_track(inputLat,inputLong)
+function [] = plot_track(inputLat,inputLong,refcoords,name)
 %Given two vectors of latitudes and longitudes, plot their ground track on
 %a map
 %   inputLat: vector of latitudes
@@ -15,6 +15,9 @@ if length(inputLong) > 0 && length(inputLat) > 0
     legend([p1,p2]);
 end
 
-print('ground_track.jpg','-djpeg');
+if length(refcoords) > 0
+    p3 = plotm(refcoords(1),refcoords(2),'xr');
+
+print(name,'-djpeg');
 
 end
