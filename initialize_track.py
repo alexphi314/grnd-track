@@ -137,6 +137,28 @@ def get_dO_dwp(a0,e0,i0,Re,Mew,J2):
 
     return dO,dwp
 
+def haversine(ref_coords,coords,Re):
+    ## Purpose: Haversine formulat to calculate distance between two lat lon pairs
+
+    ## Inputs:
+    ##   ref_coords: lat lon pair one
+    ##   coords: lat lon pair two
+    ##   Re: radius of earth (m)
+
+    s1 = math.radians(ref_coords[0])
+    s2 = math.radians(coords[0])
+    l1 = math.radians(ref_coords[1])
+    l2 = math.radians(coords[1])
+    l12 = l2 - l1
+
+    y = math.sqrt(math.pow(math.cos(s1)*math.sin(s2)-math.sin(s1)*math.cos(s2)*math.cos(l12),2) + math.pow(math.cos(s2)*math.sin(l12),2))
+    x = math.sin(s1)*math.sin(s2)+math.cos(s1)*math.cos(s2)*math.cos(l12)
+
+    s12 = math.atan2(y,x)
+    d = Re*s12
+
+    return d
+
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -150,19 +172,18 @@ help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)
 group.add_argument("--tle", dest="tle", action="store_true",
 default="true",help="Initial conditions are in the tle.txt format (default: tle)\n")
 parser.add_argument('-ic', metavar = "ic_file",
-help="file holding initial conditions")
+help="file holding initial conditions",required=True)
 parser.add_argument("-end_time", dest="end_time", default="T",
 help="Number of minutes to simulate the ground track. Default: one revolution")
+parser.add_argument("-rc", metavar = "rc_file", help="file holding reference coordinates. Format: LAT (N), LON (E). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
+default="None")
 args = vars(parser.parse_args())
 
 ## Define input args
 ic_file = args["ic"]
 ic_tle = args["tle"]
 end_time = args["end_time"]
-
-if ic_file == None:
-    parser.print_help()
-    raise Exception("Must supply a file with input arguments.")
+rc_file = args["rc"]
 
 #print(ic_file)
 #print(ic_tle)
@@ -176,6 +197,24 @@ Mew = G*Me;
 Re = 6378.37e3; #m
 eng = matlab.engine.start_matlab()
 eng.addpath(os.getcwd()+"/")
+
+if rc_file != None:
+    with open(rc_file,"r") as f:
+        line = f.readline()
+    coords = line.split(',')
+
+    ref_coords = []
+    for coord in coords:
+        coord = coord.strip()
+
+        sign = 1
+        if coord[0] == "-":
+            sign = -1
+            coord = coord[1:]
+
+        comps = coord.split('-')
+        foo = float(comps[0])+float(comps[1])/60+float(comps[2])/3600
+        ref_coords.append(foo*sign)
 
 if not ic_tle:
     print("Now parsing input Keplerian orbit elements")
@@ -290,8 +329,11 @@ else:
     print("Generating ground track for " + end_time + " minutes.")
     end_time = float(end_time)*60
 
-N = int(end_time/60)
-times = np.linspace(0,end_time,N);
+loop_time = 86400*3
+N = int(loop_time/60)
+times = np.linspace(0,loop_time,N)
+vis_t = []
+vis_a = []
 for time in times:
     ## Define the time
     l_time = tp + datetime.timedelta(seconds=time)
@@ -325,10 +367,25 @@ for time in times:
     lat,lon = get_latlon(r_ecef)
 
     ## Append
-    lats.append(lat*180/math.pi)
-    longs.append(lon*180/math.pi)
+    if time < end_time:
+        lats.append(lat*180/math.pi)
+        longs.append(lon*180/math.pi)
+
+    ## See if satellite is visible from ref coords (if given)
+    if rc_file != None:
+        dist = haversine(ref_coords,[lat,lon],Re)
+        h = r - Re
+
+        elev = math.atan2(h,dist)
+        if elev > 0:
+            vis_t.append(l_time)
+            vis_a.append(elev)
 
 ## Plot
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
 eng.plot_track(mat_lats,mat_lons,nargout=0)
+
+if rc_file != None:
+    print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
+    + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(math.degrees(max(vis_a))))
