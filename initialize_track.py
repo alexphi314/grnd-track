@@ -71,8 +71,8 @@ def peri2geo(O,i,wp):
     Q = np.array([[q11,q12,q13],[q21,q22,q23],[q31,q32,q33]])
     return Q
 
-def geo2ecef(time):
-    ## Purpose: Return the rotation matrix from geocentrix to ecef at the input times
+def calc_greenwich_sidereal(time):
+    ## Purpose: Calculate the greenwich sidereal time at a given time
 
     y = time.year
     m = time.month
@@ -93,7 +93,14 @@ def geo2ecef(time):
     thet_g = thet_g0 + 360.98564724*UT/24
     thet_g = thet_g*math.pi/180.0
 
-    Q = [[math.cos(thet_g),math.sin(thet_g),0],[-math.sin(thet_g),math.cos(thet_g),0],[0,0,1]]
+    return thet_g
+
+def geo2ecef(time):
+    ## Purpose: Return the rotation matrix from geocentric to ecef at the input times
+
+    thet_g = calc_greenwich_sidereal(time)
+
+    Q = np.array([[math.cos(thet_g),math.sin(thet_g),0],[-math.sin(thet_g),math.cos(thet_g),0],[0,0,1]])
     return Q
 
 def get_latlon(r):
@@ -159,6 +166,53 @@ def haversine(ref_coords,coords,Re):
 
     return d
 
+def lla2geo(ref_coords,time):
+    ## Purpose: Given coordinates in lla, convert to geocentric/eci coordinate frame
+    ##
+    ## Inputs:
+    ##   ref_coords: lat, lon, alt coordinates
+    ##   time: current time
+
+    lat = ref_coords[0]
+    lon = ref_coords[1]
+    h = ref_coords[2]
+    local_theta = calc_greenwich_sidereal(time) + lon
+
+    z_geo = (Re + h)*math.sin(lat)
+
+    Qgeo_ecef = geo2ecef(time)
+    Qecef_geo = np.transpose(Qgeo_ecef)
+
+    R = (Re + h)*math.cos(lat)
+    x_ecef = R*math.cos(lon)
+    y_ecef = R*math.sin(lon)
+    z_ecef = 0 # placeholder
+    r_ecef = np.array([[x_ecef],[y_ecef],[z_ecef]])
+
+    foo = np.matmul(Qecef_geo,r_ecef)
+    x_geo = foo[0]
+    y_geo = foo[1]
+
+    r_geo = np.array([[x_geo],[y_geo],[z_geo]])
+    print(r_geo)
+    print([R*math.cos(local_theta),R*math.sin(local_theta),z_geo])
+
+    return r_geo
+
+def geo2topo(theta,lat):
+    ## Purpose: Calculate transformation matrix from geocentric (ECI) to topocentric horizon
+
+    ## Inputs:
+    ##   theta: local sidereal time
+    ##   lat: latitude
+
+    Q1 = [math.sin(lat)*math.cos(theta),math.sin(lat)*math.sin(theta),-math.cos(lat)]
+    Q2 = [-math.sin(theta),math.cos(theta),0]
+    Q3 = [math.cos(lat)*math.cos(theta),math.cos(lat)*math.sin(theta),math.sin(lat)]
+
+    Q = np.array([Q1,Q2,Q3])
+    return Q
+
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -175,7 +229,7 @@ parser.add_argument('-ic', metavar = "ic_file",
 help="file holding initial conditions",required=True)
 parser.add_argument("-end_time", dest="end_time", default="T",
 help="Number of minutes to simulate the ground track. Default: one revolution")
-parser.add_argument("-rc", metavar = "rc_file", help="file holding reference coordinates. Format: LAT (N), LON (E). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
+parser.add_argument("-rc", metavar = "rc_file", help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
 default="None")
 args = vars(parser.parse_args())
 
@@ -201,7 +255,8 @@ eng.addpath(os.getcwd()+"/")
 if rc_file != None:
     with open(rc_file,"r") as f:
         line = f.readline()
-    coords = line.split(',')
+    coords = line.split(',')[0:2]
+    ref_a = line.split(',')[-1].strip()
 
     ref_coords = []
     for coord in coords:
@@ -215,6 +270,8 @@ if rc_file != None:
         comps = coord.split('-')
         foo = float(comps[0])+float(comps[1])/60+float(comps[2])/3600
         ref_coords.append(math.radians(foo*sign))
+
+    ref_coords.append(ref_a)
 
 if not ic_tle:
     print("Now parsing input Keplerian orbit elements")
@@ -354,13 +411,13 @@ for time in times:
 
     ## Define coordinates in perifocal and geocentric frames
     r = P/(1+e0*math.cos(w))
-    r_p = np.array([r*math.cos(w),r*math.sin(w),0])
+    r_p = np.array([[r*math.cos(w)],[r*math.sin(w)],[0]])
     qp_g = peri2geo(O,i0,wp)
     r_geo = np.matmul(qp_g,r_p)
 
     ## Define coordinates in ecef frame
-    bar = [l_time.year,l_time.month,l_time.day,l_time.hour,l_time.minute,l_time.second]
-    foo = matlab.double(bar)
+    #bar = [l_time.year,l_time.month,l_time.day,l_time.hour,l_time.minute,l_time.second]
+    #foo = matlab.double(bar)
 
     #qg_ecef = eng.dcmeci2ecef('IAU-2000/2006',foo)
 
@@ -378,29 +435,20 @@ for time in times:
 
     ## See if satellite is visible from ref coords (if given)
     if rc_file != None:
-        dist = haversine(ref_coords,[lat,lon],Re)
-        h = r - Re
-        print(dist)
-        print(h)
+        o_geo = lla2geo(ref_coords,l_time)
+        theta_g = calc_greenwich_sidereal(l_time)
+        theta_l = theta_g + ref_coords[1]
 
-        elev = math.atan(h/dist)
-        elevs.append(elev)
-        if elev > lim:
-            vis_t.append(l_time)
-            vis_a.append(elev)
-            vis_lats.append(math.degrees(lat))
-            vis_lons.append(math.degrees(lon))
+        rsat_o = np.subtract(r_geo,o_geo)
+        Qgeo_topo = geo2topo(theta_l,lat)
+        r_topo = np.matmul(Qgeo_topo,rsat_o)
 
-        if elev < lim and prev_elev > lim and prev_elev != 999:
-            print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
-            + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(round(math.degrees(max(vis_a)),0)))
-            eng.plot_track(matlab.double(vis_lats),matlab.double(vis_lons),matlab.double([math.degrees(ref_coords[0]),math.degrees(ref_coords[1])]),'pass.jpg',nargout=0)
-            vis_t = []
-            vis_a = []
-            vis_lats = []
-            vis_lons = []
+        range = math.sqrt(math.pow(r_topo[0],2)+math.pow(r_topo[1],2)+math.pow(r_topo[2],2))
+        elev = math.asin(r_topo[2]/range)
+        az = math.atan2(-r_topo[1]/r_topo[0])
 
-        prev_elev = elev
+        print(elev)
+        print(az)
 
 ## Plot
 mat_lats = matlab.double(lats)
