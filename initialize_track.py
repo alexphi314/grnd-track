@@ -190,12 +190,10 @@ def lla2geo(ref_coords,time):
     r_ecef = np.array([[x_ecef],[y_ecef],[z_ecef]])
 
     foo = np.matmul(Qecef_geo,r_ecef)
-    x_geo = foo[0]
-    y_geo = foo[1]
+    x_geo = float(foo[0])
+    y_geo = float(foo[1])
 
     r_geo = np.array([[x_geo],[y_geo],[z_geo]])
-    print(r_geo)
-    print([R*math.cos(local_theta),R*math.sin(local_theta),z_geo])
 
     return r_geo
 
@@ -256,7 +254,7 @@ if rc_file != None:
     with open(rc_file,"r") as f:
         line = f.readline()
     coords = line.split(',')[0:2]
-    ref_a = line.split(',')[-1].strip()
+    ref_a = float(line.split(',')[-1].strip())
 
     ref_coords = []
     for coord in coords:
@@ -395,7 +393,7 @@ vis_lats = []
 vis_lons = []
 elevs = []
 prev_elev = 999
-lim = math.radians(50)
+lim = math.radians(10)
 for time in times:
     ## Define the time
     l_time = tp + datetime.timedelta(seconds=time)
@@ -443,15 +441,32 @@ for time in times:
         Qgeo_topo = geo2topo(theta_l,lat)
         r_topo = np.matmul(Qgeo_topo,rsat_o)
 
-        range = math.sqrt(math.pow(r_topo[0],2)+math.pow(r_topo[1],2)+math.pow(r_topo[2],2))
-        elev = math.asin(r_topo[2]/range)
-        az = math.atan2(-r_topo[1]/r_topo[0])
+        rs = float(r_topo[0])
+        re = float(r_topo[1])
+        rz = float(r_topo[2])
 
-        print(elev)
-        print(az)
+        range = math.sqrt(math.pow(rs,2)+math.pow(re,2)+math.pow(rz,2))
+        elev = math.asin(rz/range)
+        az = math.atan2(-re,rs)
+
+        if elev > lim:
+            vis_t.append(l_time)
+            vis_a.append(elev)
+            vis_lats.append(math.degrees(lat))
+            vis_lons.append(math.degrees(lon))
+
+        if elev < lim and prev_elev > lim and prev_elev != 999:
+            print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
+            + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(round(math.degrees(max(vis_a)),0)))
+            eng.plot_track(matlab.double(vis_lats),matlab.double(vis_lons),matlab.double([math.degrees(ref_coords[0]),math.degrees(ref_coords[1])]),'pass.jpg',nargout=0)
+            vis_t = []
+            vis_a = []
+            vis_lats = []
+            vis_lons = []
+
+        prev_elev = elev
 
 ## Plot
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
-print(math.degrees(max(elevs)))
 eng.plot_track(mat_lats,mat_lons,matlab.double([]),'ground_track.jpg',nargout=0)
