@@ -384,13 +384,14 @@ else:
     print("Generating ground track for " + end_time + " minutes.")
     end_time = float(end_time)*60
 
-loop_time = 86400*5
+loop_time = 86400*3
 N = int(loop_time/60)
 times = np.linspace(0,loop_time,N)
 vis_t = []
 vis_a = []
 vis_lats = []
 vis_lons = []
+vis_az = []
 elevs = []
 prev_elev = 999
 lim = math.radians(10)
@@ -447,26 +448,31 @@ for time in times:
 
         range = math.sqrt(math.pow(rs,2)+math.pow(re,2)+math.pow(rz,2))
         elev = math.asin(rz/range)
-        az = math.atan2(-re,rs)
+        az = math.atan2(rs,re) + math.radians(90)
 
         if elev > lim:
             vis_t.append(l_time)
             vis_a.append(elev)
             vis_lats.append(math.degrees(lat))
             vis_lons.append(math.degrees(lon))
+            vis_az.append(math.degrees(az))
 
         if elev < lim and prev_elev > lim and prev_elev != 999:
-            print("Satellite is visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to "
-            + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(round(math.degrees(max(vis_a)),0)))
-            eng.plot_track(matlab.double(vis_lats),matlab.double(vis_lons),matlab.double([math.degrees(ref_coords[0]),math.degrees(ref_coords[1])]),'pass.jpg',nargout=0)
+            caption = "Visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to " + vis_t[-1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(round(math.degrees(max(vis_a)),0)) + " and azimuth " + str(vis_az[0]) + " to " + str(vis_az[-1])
+            print(caption)
+            line1 = caption[:78]
+            line2 = caption[78:]
+            name = 'Plots/'+vis_t[0].strftime('%Y-%m-%dT%H:%M:%S')+'_'+vis_t[-1].strftime('%Y-%m-%dT%H:%M:%S')+'.jpg'
+            eng.plot_track(matlab.double(vis_lats),matlab.double(vis_lons),matlab.double([math.degrees(ref_coords[0]),math.degrees(ref_coords[1])]),name,line1,line2,nargout=0)
             vis_t = []
             vis_a = []
             vis_lats = []
             vis_lons = []
+            vis_az = []
 
         prev_elev = elev
 
 ## Plot
 mat_lats = matlab.double(lats)
 mat_lons = matlab.double(longs)
-eng.plot_track(mat_lats,mat_lons,matlab.double([]),'ground_track.jpg',nargout=0)
+eng.plot_track(mat_lats,mat_lons,matlab.double([]),'ground_track.jpg','','',nargout=0)
