@@ -1,8 +1,11 @@
-function [] = plot_track(inputLat,inputLong,refcoords,name)
+function [] = plot_track(inputLat,inputLong,refcoords,name,line1,line2)
 %Given two vectors of latitudes and longitudes, plot their ground track on
 %a map
 %   inputLat: vector of latitudes
 %   inputLong: vector of longitudes
+%   refcoords: Reference viewing location
+%   name: output image name
+%   caption: caption for image
 
 worldmap world;
 load coastlines;
@@ -18,6 +21,7 @@ end
 if length(refcoords) > 0
     p3 = plotm(refcoords(1),refcoords(2),'xr');
 
+title({line1,line2});
 print(name,'-djpeg');
 
 end
