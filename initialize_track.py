@@ -117,7 +117,7 @@ def geo2ecef(time):
 
 
 def get_latlon(r):
-    ## Purpose: Given radius vector in ECEF, return latiude and longitude
+    ## Purpose: Given radius vector in ECEF, return latitude and longitude
 
     ## Inputs:
     ##   r: radius vector in ECEF frame (m)
@@ -221,6 +221,52 @@ def geo2topo(theta, lat):
     Q = np.array([Q1, Q2, Q3])
     return Q
 
+def calc_sat_subpoint(lat,lon,r_geo):
+    ## Purpose: Given geodetic satellite latitude and longitude, calculate geocentric latitude, longitude, and altitude
+    ##
+    ## Inputs:
+    ##   lat: geodetic latitude
+    ##   lon: geodetic longitude
+    ##   r_geo: ECI coordinates
+
+    e2 = 2*WGS84_f-math.pow(WGS84_f,2)
+    lat_i = lat
+    tol = 1e-8
+    R = math.sqrt(math.pow(r_geo[0],2) + math.pow(r_geo[1],2))
+
+    f_C = lambda x: 1/math.sqrt(1-e2*math.pow(math.sin(x),2))
+    f_lat = lambda x, C: math.atan2(r_geo[2] + WGS84_a*C*e2*math.sin(x),R)
+    C = f_C(lat_i)
+    lat_n = f_lat(lat_i,C)
+
+    while abs(lat_i - lat_n) > tol:
+        lat_i = lat_n
+        C = f_C(lat_i)
+        lat_n = f_lat(lat_i,C)
+
+    geoc_lat = lat_n
+    geoc_lon = lon
+    h = R/math.cos(geoc_lat) - WGS84_a*C
+
+    r_lla = [geoc_lat,geoc_lon,h]
+    return r_lla
+
+def find_rgeo(P, e, w, i, wp, O):
+    ## Purpose: Calculate radius in ECI
+    ##
+    ## Inputs:
+    ##   P: semi-latus rectum
+    ##   e: eccentricity
+    ##   w: true anomaly (rad)
+    ##   i: inclination (rad)
+    ##   wp: argument of perigee (rad)
+
+    r = P / (1 + e * math.cos(w))
+    r_p = np.array([[r * math.cos(w)], [r * math.sin(w)], [0]])
+    qp_g = peri2geo(O, i, wp)
+    r_geo = np.matmul(qp_g, r_p)
+
+    return r_geo
 
 #####################################################
 ### 01. Initializing variables and getting inputs ###
@@ -360,8 +406,8 @@ if __name__ == "__main__":
         dt = M0 / n
         dO, dwp = get_dO_dwp(a0, e0, i0, Re, Mew, J2)
         print(str(dt) + " seconds since perigee passage.")
-        h = math.sqrt(Mew * a0 * (1 - pow(e0, 2)))
-        P = pow(h, 2) / Mew
+        h = math.sqrt(Mew * a0 * (1 - math.pow(e0, 2)))
+        P = math.pow(h, 2) / Mew
 
         ## Define times
         if int(epoch_year) > datetime.datetime.now().year:
@@ -426,10 +472,8 @@ if __name__ == "__main__":
         wp = wp0 + dwp * time
 
         ## Define coordinates in perifocal and geocentric frames
-        r = P / (1 + e0 * math.cos(w))
-        r_p = np.array([[r * math.cos(w)], [r * math.sin(w)], [0]])
-        qp_g = peri2geo(O, i0, wp)
-        r_geo = np.matmul(qp_g, r_p)
+        r_geo = find_rgeo(P, e0, w, i0, wp, O)
+        print(r_geo)
 
         ## Define coordinates in ecef frame
         # bar = [l_time.year,l_time.month,l_time.day,l_time.hour,l_time.minute,l_time.second]
@@ -440,6 +484,8 @@ if __name__ == "__main__":
         qg_ecef = geo2ecef(l_time)
         qg_ecef = np.asarray(qg_ecef)
         r_ecef = np.matmul(qg_ecef, r_geo)
+        print(r_ecef)
+        raise Exception
 
         ## Calculate instanteous latitude and longitude
         lat, lon = get_latlon(r_ecef)
