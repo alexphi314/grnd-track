@@ -11,7 +11,95 @@ import matlab.engine
 #################
 ### Functions ###
 #################
+def parse_rcfile(line):
+    coords = line.split(',')[0:2]
+    ref_a = float(line.split(',')[-1].strip())
 
+    ref_coords = []
+    for coord in coords:
+        coord = coord.strip()
+
+        sign = 1
+        if coord[0] == "-":
+            sign = -1
+            coord = coord[1:]
+
+        comps = coord.split('-')
+        foo = float(comps[0]) + float(comps[1]) / 60 + float(comps[2]) / 3600
+        ref_coords.append(math.radians(foo * sign))
+
+    ref_coords.append(ref_a)
+    return ref_coords
+
+def ic_calc_time_since_perigee(e,w,a,epoch):
+    E_coef = math.sqrt((1 - e) / (1 + e)) * math.tan(w / 2.0)
+    E0 = 2.0 * math.atan(E_coef)
+    if E0 < 0:
+        E0 += 2 * math.pi
+    M0 = E0 - e * math.sin(E0)
+    T = 2.0 * math.pi * pow(a, 1.5) / math.sqrt(Mew)
+    dt = (M0 * T) / 2.0 / math.pi  ## units of seconds
+    print(str(dt) + " seconds since perigee passage.")
+    h = math.sqrt(Mew * a * (1 - pow(e, 2)))
+    P = pow(h, 2) / Mew
+
+    ## Define times
+    t0 = datetime.datetime.strptime(epoch, "%Y-%m-%d %H:%M:%S")
+    print("Epoch: " + str(t0))
+    tp = t0 - datetime.timedelta(seconds=dt)
+
+    return tp, h, P, T
+
+def parse_tle(line1,line2):
+    ## Read tle
+    sat_num = line1[2:7]
+    epoch_year = line1[18:20]
+    epoch_day = line1[20:32]
+    i0 = math.radians(float(line2[8:16]))
+    O0 = math.radians(float(line2[17:25]))
+    e0 = float("." + line2[26:33])
+    wp0 = math.radians(float(line2[34:42]))
+    M0 = math.radians(float(line2[43:51]))
+    n = float(line2[52:63]) * 2 * math.pi / 86400  # rad/s
+
+    ## Define times
+    if int(epoch_year) > datetime.datetime.now().year:
+        year = "19" + str(epoch_year)
+    else:
+        year = "20" + str(epoch_year)
+
+    frac, doy = math.modf(float(epoch_day))
+    frac, hour = math.modf(frac * 24)
+    frac, min = math.modf(frac * 60)
+    frac, sec = math.modf(frac * 60)
+
+    if doy < 10:
+        doy = "00" + str(doy)
+    elif doy < 100:
+        doy = "0" + str(doy)
+
+    epoch = str(year) + "-" + str(int(doy)) + " " + str(int(hour)) + ":" + str(int(min)) + ":" + str(
+        int(sec)) + "." + str(frac)[2:6]
+
+    return sat_num, epoch, i0, O0, e0, wp0, M0, n
+
+def tle_calc_time_since_perigee(M, e, n, i, epoch):
+    ## Calculate values
+    E0 = solve_kepler(M, e)
+    w0 = calc_w(E0, e)
+    a0 = math.pow(Mew / math.pow(n, 2), float(1 / 3))
+    T = 2.0 * math.pi * pow(a0, 1.5) / math.sqrt(Mew)
+    dt = M / n
+    dO, dwp = get_dO_dwp(a0, e, i)
+    print(str(dt) + " seconds since perigee passage.")
+    h = math.sqrt(Mew * a0 * (1 - math.pow(e, 2)))
+    P = math.pow(h, 2) / Mew
+
+    t0 = datetime.datetime.strptime(epoch, "%Y-%j %H:%M:%S.%f")
+    print("Epoch: " + str(t0))
+    tp = t0 - datetime.timedelta(seconds=dt)
+
+    return tp, h, P, dO, dwp, T
 
 def solve_kepler(M, e):
     ## Purpose: Given mean anomaly and eccentricity, return eccentric anomaly
@@ -42,7 +130,6 @@ def solve_kepler(M, e):
 
     return E
 
-
 def calc_w(E, e):
     ## Purpose: Given eccentric anomaly and eccentricity, return true anomaly
 
@@ -57,7 +144,6 @@ def calc_w(E, e):
         w += 2.0 * math.pi
 
     return w
-
 
 def peri2geo(O, i, wp):
     ## Purpose: Given RAAN, inclination, and argument of perigee, return rotation matrix from perifocal to geocentric frame
@@ -79,7 +165,6 @@ def peri2geo(O, i, wp):
 
     Q = np.array([[q11, q12, q13], [q21, q22, q23], [q31, q32, q33]])
     return Q
-
 
 def calc_greenwich_sidereal(time):
     ## Purpose: Calculate the greenwich sidereal time at a given time
@@ -106,7 +191,6 @@ def calc_greenwich_sidereal(time):
 
     return thet_g
 
-
 def geo2ecef(time):
     ## Purpose: Return the rotation matrix from geocentric to ecef at the input times
 
@@ -115,9 +199,8 @@ def geo2ecef(time):
     Q = np.array([[math.cos(thet_g), math.sin(thet_g), 0], [-math.sin(thet_g), math.cos(thet_g), 0], [0, 0, 1]])
     return Q
 
-
 def get_latlon(r):
-    ## Purpose: Given radius vector in ECEF, return latitude and longitude
+    ## Purpose: Given radius vector in ECEF, return latitude and longitude in radians
 
     ## Inputs:
     ##   r: radius vector in ECEF frame (m)
@@ -140,17 +223,30 @@ def get_latlon(r):
 
     return dec, ra
 
+def find_rgeo(P, e, w, i, wp, O):
+    ## Purpose: Calculate radius in ECI
+    ##
+    ## Inputs:
+    ##   P: semi-latus rectum
+    ##   e: eccentricity
+    ##   w: true anomaly (rad)
+    ##   i: inclination (rad)
+    ##   wp: argument of perigee (rad)
 
-def get_dO_dwp(a0, e0, i0, Re, Mew, J2):
+    r = P / (1 + e * math.cos(w))
+    r_p = np.array([[r * math.cos(w)], [r * math.sin(w)], [0]])
+    qp_g = peri2geo(O, i, wp)
+    r_geo = np.matmul(qp_g, r_p)
+
+    return r_geo
+
+def get_dO_dwp(a0, e0, i0):
     ## Purpose: Calculate rate of change of RAAN and wp
 
     ## Inputs:
     ##   a0: sma (m)
     ##   e0: eccentricity
     ##   i0: inclination (rad)
-    ##   Re: Radius of Earth (m)
-    ##   Mew: graviational constant
-    ##   J2: J2 constant
 
     coef = -((3 * math.sqrt(Mew) * J2 * math.pow(Re, 2)) / (2 * pow((1 - pow(e0, 2)), 2) * pow(a0, 3.5)))
     dO = coef * math.cos(i0)
@@ -159,13 +255,12 @@ def get_dO_dwp(a0, e0, i0, Re, Mew, J2):
     return dO, dwp
 
 
-def haversine(ref_coords, coords, Re):
+def haversine(ref_coords, coords):
     ## Purpose: Haversine formulat to calculate distance between two lat lon pairs
 
     ## Inputs:
     ##   ref_coords: lat lon pair one
     ##   coords: lat lon pair two
-    ##   Re: radius of earth (m)
 
     s1 = math.radians(ref_coords[0])
     s2 = math.radians(coords[0])
@@ -181,7 +276,6 @@ def haversine(ref_coords, coords, Re):
     d = Re * s12
 
     return d
-
 
 def lla2geo(ref_coords, time):
     ## Purpose: Given coordinates in lla, convert to geocentric/eci coordinate frame
@@ -205,7 +299,6 @@ def lla2geo(ref_coords, time):
     r_geo = np.array([[x_geo], [y_geo], [z_geo]])
 
     return r_geo
-
 
 def geo2topo(theta, lat):
     ## Purpose: Calculate transformation matrix from geocentric (ECI) to topocentric horizon
@@ -251,23 +344,6 @@ def calc_sat_subpoint(lat,lon,r_geo):
     r_lla = [geoc_lat,geoc_lon,h]
     return r_lla
 
-def find_rgeo(P, e, w, i, wp, O):
-    ## Purpose: Calculate radius in ECI
-    ##
-    ## Inputs:
-    ##   P: semi-latus rectum
-    ##   e: eccentricity
-    ##   w: true anomaly (rad)
-    ##   i: inclination (rad)
-    ##   wp: argument of perigee (rad)
-
-    r = P / (1 + e * math.cos(w))
-    r_p = np.array([[r * math.cos(w)], [r * math.sin(w)], [0]])
-    qp_g = peri2geo(O, i, wp)
-    r_geo = np.matmul(qp_g, r_p)
-
-    return r_geo
-
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -288,50 +364,35 @@ if __name__ == "__main__":
     ## Define argument parsing
     parser = argparse.ArgumentParser(description="Process initial conditions")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--kep", dest="tle", action="store_false",
+    group.add_argument("--kep", '-k', dest="tle", action="store_false",
                    default="true",
                    help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)\n  semi-major axis (m)\n  eccentricity\n  inclination (deg)\n  true anomaly (deg)\n  RAAN (deg)\n  argument of perigee (deg)\n")
-    group.add_argument("--tle", dest="tle", action="store_true",
+    group.add_argument("--tle", '-t', dest="tle", action="store_true",
                    default="true", help="Initial conditions are in the tle.txt format (default: tle)\n")
-    parser.add_argument('-ic', metavar="ic_file",
+    parser.add_argument('--init_cond', '-i', metavar="ic_file",
                     help="file holding initial conditions", required=True)
-    parser.add_argument("-end_time", dest="end_time", default="T",
+    parser.add_argument("--end_time", '-e', dest="end_time", default="T",
                     help="Number of minutes to simulate the ground track. Default: one revolution")
-    parser.add_argument("-rc", metavar="rc_file",
+    parser.add_argument("--ref_coord", '-r',
                     help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
     args = vars(parser.parse_args())
 
     ## Define input args
-    ic_file = args["ic"]
+    ic_file = args["init_cond"]
     ic_tle = args["tle"]
     end_time = args["end_time"]
-    rc_file = args["rc"]
+    rc_file = args["ref_coord"]
 
     # print(ic_file)
     # print(ic_tle)
     # print(end_time)
+    print(rc_file)
 
-    if rc_file != None:
+    if rc_file is not None:
         with open(rc_file, "r") as f:
             line = f.readline()
-        coords = line.split(',')[0:2]
-        ref_a = float(line.split(',')[-1].strip())
-
-        ref_coords = []
-        for coord in coords:
-            coord = coord.strip()
-
-            sign = 1
-            if coord[0] == "-":
-                sign = -1
-                coord = coord[1:]
-
-            comps = coord.split('-')
-            foo = float(comps[0]) + float(comps[1]) / 60 + float(comps[2]) / 3600
-            ref_coords.append(math.radians(foo * sign))
-
-        ref_coords.append(ref_a)
+        ref_coords = parse_rcfile(line)
 
     if not ic_tle:
         print("Now parsing input Keplerian orbit elements")
@@ -361,24 +422,10 @@ if __name__ == "__main__":
         #######################################
 
         ## Determine rate of change of O and wp
-        dO, dwp = get_dO_dwp(a0, e0, i0, Re, Mew, J2)
+        dO, dwp = get_dO_dwp(a0, e0, i0)
 
         ## Calculate time since perigee passage
-        E_coef = math.sqrt((1 - e0) / (1 + e0)) * math.tan(w0 / 2.0)
-        E0 = 2.0 * math.atan(E_coef)
-        if E0 < 0:
-            E0 += 2 * math.pi
-        M0 = E0 - e0 * math.sin(E0)
-        T = 2.0 * math.pi * pow(a0, 1.5) / math.sqrt(Mew)
-        dt = (M0 * T) / 2.0 / math.pi  ## units of seconds
-        print(str(dt) + " seconds since perigee passage.")
-        h = math.sqrt(Mew * a0 * (1 - pow(e0, 2)))
-        P = pow(h, 2) / Mew
-
-        ## Define times
-        t0 = datetime.datetime.strptime(epoch, "%Y-%m-%d %H:%M:%S")
-        print("Epoch: " + str(t0))
-        tp = t0 - datetime.timedelta(seconds=dt)
+        tp, h, P, T = ic_calc_time_since_perigee(e0,w0,a0,epoch)
         print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
 
     else:
@@ -387,49 +434,8 @@ if __name__ == "__main__":
             line1 = f.readline()
             line2 = f.readline()
 
-        ## Read tle
-        sat_num = line1[2:7]
-        epoch_year = line1[18:20]
-        epoch_day = line1[20:32]
-        i0 = math.radians(float(line2[8:16]))
-        O0 = math.radians(float(line2[17:25]))
-        e0 = float("." + line2[26:33])
-        wp0 = math.radians(float(line2[34:42]))
-        M0 = math.radians(float(line2[43:51]))
-        n = float(line2[52:63]) * 2 * math.pi / 86400  # rad/s
-
-        ## Calculate values
-        E0 = solve_kepler(M0, e0)
-        w0 = calc_w(E0, e0)
-        a0 = math.pow(Mew / math.pow(n, 2), float(1 / 3))
-        T = 2.0 * math.pi * pow(a0, 1.5) / math.sqrt(Mew)
-        dt = M0 / n
-        dO, dwp = get_dO_dwp(a0, e0, i0, Re, Mew, J2)
-        print(str(dt) + " seconds since perigee passage.")
-        h = math.sqrt(Mew * a0 * (1 - math.pow(e0, 2)))
-        P = math.pow(h, 2) / Mew
-
-        ## Define times
-        if int(epoch_year) > datetime.datetime.now().year:
-            year = "19" + str(epoch_year)
-        else:
-            year = "20" + str(epoch_year)
-
-        frac, doy = math.modf(float(epoch_day))
-        frac, hour = math.modf(frac * 24)
-        frac, min = math.modf(frac * 60)
-        frac, sec = math.modf(frac * 60)
-
-        if doy < 10:
-            doy = "00" + str(doy)
-        elif doy < 100:
-            doy = "0" + str(doy)
-
-        epoch = str(year) + "-" + str(int(doy)) + " " + str(int(hour)) + ":" + str(int(min)) + ":" + str(
-            int(sec)) + "." + str(frac)[2:6]
-        t0 = datetime.datetime.strptime(epoch, "%Y-%j %H:%M:%S.%f")
-        print("Epoch: " + str(t0))
-        tp = t0 - datetime.timedelta(seconds=dt)
+        sat_num, epoch, i0, O0, e0, wp0, M0, n = parse_tle(line1,line2)
+        tp, h, P, dO, dwp, T = tle_calc_time_since_perigee(M0, e0, n, i0, epoch)
         print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
 
     #################################################################
@@ -471,9 +477,8 @@ if __name__ == "__main__":
         O = O0 + dO * time
         wp = wp0 + dwp * time
 
-        ## Define coordinates in perifocal and geocentric frames
+        ## Define coordinates in geocentric frames
         r_geo = find_rgeo(P, e0, w, i0, wp, O)
-        print(r_geo)
 
         ## Define coordinates in ecef frame
         # bar = [l_time.year,l_time.month,l_time.day,l_time.hour,l_time.minute,l_time.second]
@@ -484,8 +489,6 @@ if __name__ == "__main__":
         qg_ecef = geo2ecef(l_time)
         qg_ecef = np.asarray(qg_ecef)
         r_ecef = np.matmul(qg_ecef, r_geo)
-        print(r_ecef)
-        raise Exception
 
         ## Calculate instanteous latitude and longitude
         lat, lon = get_latlon(r_ecef)
