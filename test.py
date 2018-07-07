@@ -266,6 +266,16 @@ class Test_calc_sat_subpoint(unittest.TestCase):
         lat = math.radians(45)
         lon = math.radians(-93)
         time = dt.datetime(year=1995,month=11,day=18,hour=12,minute=46)
+        r_geo = [-4400.594e3, 1932.87e3, 4760.712e3]
+
+        r_lla_out = initialize_track.calc_sat_subpoint(lat, lon, r_geo)
+        r_lla = [math.radians(44.91),math.radians(-92.31),397.507e3]
+        tol = 2
+
+        self.assertAlmostEqual(r_lla[0],r_lla_out[0],1)
+        self.assertAlmostEqual(r_lla[1],r_lla_out[1],1)
+        self.assertGreaterEqual(r_lla_out[2],r_lla[2]-tol)
+        self.assertLessEqual(r_lla_out[2],r_lla[2]+tol)
 
 if __name__ == '__main__':
     unittest.main()

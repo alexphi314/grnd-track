@@ -4,6 +4,7 @@ import datetime
 import numpy as np
 import os
 import argparse
+import subprocess
 
 import matlab.engine
 
@@ -396,6 +397,11 @@ if __name__ == "__main__":
             line = f.readline()
         ref_coords = parse_rcfile(line)
 
+        ## Remove old plots
+        for file in os.listdir(os.getcwd()+'/Plots'):
+            #print(os.getcwd()+'/Plots/'+file)
+            subprocess.call(['rm','-f',os.getcwd()+'/Plots/'+file])
+
     if not ic_tle:
         print("Now parsing input Keplerian orbit elements")
         ## Read text file with orbit initial conditions (ic.kep)
@@ -502,18 +508,22 @@ if __name__ == "__main__":
 
         ## See if satellite is visible from ref coords (if given)
         if rc_file != None and rc_file != 'None':
+            ## Get position of observer in ECI coordinates
             o_geo = lla2geo(ref_coords, l_time)
+            geoc_ref_coords = calc_sat_subpoint(ref_coords[0], ref_coords[1], o_geo)
             theta_g = calc_greenwich_sidereal(l_time)
             theta_l = theta_g + ref_coords[1]
 
+            ## Calculate vector from observer to satellite and rotate into the topocentric horizon frame
             rsat_o = np.subtract(r_geo, o_geo)
-            Qgeo_topo = geo2topo(theta_l, lat)
+            Qgeo_topo = geo2topo(theta_l, geoc_ref_coords[1])
             r_topo = np.matmul(Qgeo_topo, rsat_o)
 
             rs = float(r_topo[0])
             re = float(r_topo[1])
             rz = float(r_topo[2])
 
+            ## Calculate look angles
             range = math.sqrt(math.pow(rs, 2) + math.pow(re, 2) + math.pow(rz, 2))
             elev = math.asin(rz / range)
             az = math.atan2(rs, re) + math.radians(90)
