@@ -356,8 +356,6 @@ WGS84_f = 1/298.257223563
 WGS84_b = WGS84_a*(1-WGS84_f)
 WGS84_w = 7292115e-11 #rad/s
 Re = 6378.37e3 # m
-eng = matlab.engine.start_matlab()
-eng.addpath(os.getcwd() + "/")
 
 if __name__ == "__main__":
 
@@ -387,9 +385,13 @@ if __name__ == "__main__":
     # print(ic_file)
     # print(ic_tle)
     # print(end_time)
-    print(rc_file)
+    #print(rc_file)
 
-    if rc_file is not None:
+    ## Start MATLAB
+    eng = matlab.engine.start_matlab()
+    eng.addpath(os.getcwd() + "/")
+
+    if rc_file is not None and rc_file != 'None':
         with open(rc_file, "r") as f:
             line = f.readline()
         ref_coords = parse_rcfile(line)
@@ -499,7 +501,7 @@ if __name__ == "__main__":
             longs.append(lon * 180 / math.pi)
 
         ## See if satellite is visible from ref coords (if given)
-        if rc_file != None:
+        if rc_file != None and rc_file != 'None':
             o_geo = lla2geo(ref_coords, l_time)
             theta_g = calc_greenwich_sidereal(l_time)
             theta_l = theta_g + ref_coords[1]
