@@ -18,8 +18,9 @@ if length(inputLong) > 0 && length(inputLat) > 0
     legend([p1,p2]);
 end
 
-if length(refcoords) > 0
+if length(refcoords) > 1
     p3 = plotm(refcoords(1),refcoords(2),'xr');
+end
 
 title({line1,line2});
 print(name,'-djpeg');
