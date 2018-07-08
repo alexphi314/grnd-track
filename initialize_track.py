@@ -14,7 +14,6 @@ import matlab.engine
 #################
 def parse_rcfile(line):
     coords = line.split(',')[0:2]
-    ref_a = float(line.split(',')[-1].strip())
 
     ref_coords = []
     for coord in coords:
@@ -29,7 +28,6 @@ def parse_rcfile(line):
         foo = float(comps[0]) + float(comps[1]) / 60 + float(comps[2]) / 3600
         ref_coords.append(math.radians(foo * sign))
 
-    ref_coords.append(ref_a)
     return ref_coords
 
 def ic_calc_time_since_perigee(e,w,a,epoch):
@@ -201,7 +199,7 @@ def geo2ecef(time):
     return Q
 
 def get_latlon(r):
-    ## Purpose: Given radius vector in ECEF, return latitude and longitude in radians
+    ## Purpose: Given radius vector in ECEF, return geocentric latitude and longitude in radians (assumes spherical earth)
 
     ## Inputs:
     ##   r: radius vector in ECEF frame (m)
@@ -287,7 +285,6 @@ def lla2geo(ref_coords, time):
 
     lat = ref_coords[0]
     lon = ref_coords[1]
-    h = ref_coords[2]
     local_theta = calc_greenwich_sidereal(time) + lon
 
     C = 1/math.sqrt(1 + WGS84_f*(WGS84_f-2)*math.pow(math.sin(lat),2))
@@ -316,7 +313,7 @@ def geo2topo(theta, lat):
     return Q
 
 def calc_sat_subpoint(lat,lon,r_geo):
-    ## Purpose: Given geodetic satellite latitude and longitude, calculate geocentric latitude, longitude, and altitude
+    ## Purpose: Given geocentric satellite latitude and longitude, calculate geodetic latitude, longitude, and altitude
     ##
     ## Inputs:
     ##   lat: geodetic latitude
@@ -338,12 +335,42 @@ def calc_sat_subpoint(lat,lon,r_geo):
         C = f_C(lat_i)
         lat_n = f_lat(lat_i,C)
 
-    geoc_lat = lat_n
-    geoc_lon = lon
-    h = R/math.cos(geoc_lat) - WGS84_a*C
+    geod_lat = lat_n
+    geod_lon = lon
+    h = R/math.cos(geod_lat) - WGS84_a*C
 
-    r_lla = [geoc_lat,geoc_lon,h]
+    r_lla = [geod_lat,geod_lon,h]
     return r_lla
+
+def get_look_angles(ref_coords, time, sat_geo):
+    ## Purpose: Calculate elevation and azimuth from observer to satellite
+    ##
+    ## Inputs:
+    ##   ref_coords: coordinates of observer in geodetic lat, lon, h
+    ##   time: time of observation
+    ##   sat_geo: coordinates of satellite in ECI frame
+
+    ## Get position of observer in ECI coordinates
+    o_geo = lla2geo(ref_coords, time)
+    #geoc_ref_coords = calc_sat_subpoint(ref_coords[0], ref_coords[1], o_geo)
+    theta_g = calc_greenwich_sidereal(time)
+    theta_l = theta_g + ref_coords[1]
+
+    ## Calculate vector from observer to satellite and rotate into the topocentric horizon frame
+    rsat_o = np.subtract(sat_geo, o_geo)
+    Qgeo_topo = geo2topo(theta_l, ref_coords[0])
+    r_topo = np.matmul(Qgeo_topo, rsat_o)
+
+    rs = float(r_topo[0])
+    re = float(r_topo[1])
+    rz = float(r_topo[2])
+
+    ## Calculate look angles
+    range = math.sqrt(math.pow(rs, 2) + math.pow(re, 2) + math.pow(rz, 2))
+    elev = math.asin(rz / range)
+    az = math.atan2(rs, re) + math.radians(90)
+
+    return elev, az
 
 #####################################################
 ### 01. Initializing variables and getting inputs ###
@@ -461,7 +488,7 @@ if __name__ == "__main__":
         print("Generating ground track for " + end_time + " minutes.")
         end_time = float(end_time) * 60
 
-    loop_time = 86400 * 1
+    loop_time = 86400 * 3
     N = int(loop_time / 60)
     times = np.linspace(0, loop_time, N)
     vis_t = []
@@ -472,6 +499,7 @@ if __name__ == "__main__":
     elevs = []
     prev_elev = 999
     lim = math.radians(10)
+    table = []
     for time in times:
         ## Define the time
         l_time = tp + datetime.timedelta(seconds=time)
@@ -489,17 +517,15 @@ if __name__ == "__main__":
         r_geo = find_rgeo(P, e0, w, i0, wp, O)
 
         ## Define coordinates in ecef frame
-        # bar = [l_time.year,l_time.month,l_time.day,l_time.hour,l_time.minute,l_time.second]
-        # foo = matlab.double(bar)
-
-        # qg_ecef = eng.dcmeci2ecef('IAU-2000/2006',foo)
-
         qg_ecef = geo2ecef(l_time)
         qg_ecef = np.asarray(qg_ecef)
         r_ecef = np.matmul(qg_ecef, r_geo)
 
         ## Calculate instanteous latitude and longitude
-        lat, lon = get_latlon(r_ecef)
+        geoc_lat, geoc_lon = get_latlon(r_ecef)
+        r_lla = calc_sat_subpoint(geoc_lat, geoc_lon, r_geo)
+        lat = r_lla[0]
+        lon = r_lla[1]
 
         ## Append
         if time < end_time:
@@ -508,27 +534,10 @@ if __name__ == "__main__":
 
         ## See if satellite is visible from ref coords (if given)
         if rc_file != None and rc_file != 'None':
-            ## Get position of observer in ECI coordinates
-            o_geo = lla2geo(ref_coords, l_time)
-            geoc_ref_coords = calc_sat_subpoint(ref_coords[0], ref_coords[1], o_geo)
-            theta_g = calc_greenwich_sidereal(l_time)
-            theta_l = theta_g + ref_coords[1]
+            elev, az = get_look_angles(ref_coords, l_time, r_geo)
+            table.append([l_time, math.degrees(az), math.degrees(elev)])
 
-            ## Calculate vector from observer to satellite and rotate into the topocentric horizon frame
-            rsat_o = np.subtract(r_geo, o_geo)
-            Qgeo_topo = geo2topo(theta_l, geoc_ref_coords[1])
-            r_topo = np.matmul(Qgeo_topo, rsat_o)
-
-            rs = float(r_topo[0])
-            re = float(r_topo[1])
-            rz = float(r_topo[2])
-
-            ## Calculate look angles
-            range = math.sqrt(math.pow(rs, 2) + math.pow(re, 2) + math.pow(rz, 2))
-            elev = math.asin(rz / range)
-            az = math.atan2(rs, re) + math.radians(90)
-
-            if elev > lim:
+            if elev >= lim:
                 vis_t.append(l_time)
                 vis_a.append(elev)
                 vis_lats.append(math.degrees(lat))
@@ -559,3 +568,10 @@ if __name__ == "__main__":
     mat_lats = matlab.double(lats)
     mat_lons = matlab.double(longs)
     eng.plot_track(mat_lats, mat_lons, matlab.double([]), 'ground_track.jpg', '', '', nargout=0)
+
+    ## Print Table
+    if len(table) > 0:
+        with open('table.lst','w') as f:
+            for entry in table:
+                time = entry[0].strftime('%Y-%m-%d %H:%M:%S')
+                f.write(time+'\t'+str(entry[1])+'\t'+str(entry[2])+'\n')

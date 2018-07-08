@@ -35,13 +35,12 @@ def assert_matrix_almost_equal(testCase,true,test):
 
 class Test_parse_rcfile(unittest.TestCase):
     def test_function(self):
-        line = '53-46-5, -269-52-32, 78.2'
-        coords = np.array([math.radians(53.7181),math.radians(-269.88),78.2])
+        line = '53-46-5, -269-52-32'
+        coords = np.array([math.radians(53.7181),math.radians(-269.88)])
         coords_out = np.array(initialize_track.parse_rcfile(line))
 
         self.assertAlmostEqual(coords[0],coords_out[0],2)
         self.assertAlmostEqual(coords[1],coords_out[1],2)
-        self.assertAlmostEqual(coords[2],coords_out[2],2)
 
 class Test_calc_time_since_perigee(unittest.TestCase):
     e = 0.37255
@@ -228,10 +227,9 @@ class Test_lla2geo(unittest.TestCase):
     def test_function(self):
         lat = math.radians(40)
         lon = math.radians(-75)
-        h = 0
         time = dt.datetime(year=1995,month=10,day=1,hour=9)
 
-        r_geo = initialize_track.lla2geo([lat,lon,h],time)
+        r_geo = initialize_track.lla2geo([lat,lon],time)
         x = r_geo[0][0]
         y = r_geo[1][0]
         z = r_geo[2][0]
@@ -265,7 +263,6 @@ class Test_calc_sat_subpoint(unittest.TestCase):
     def test_function(self):
         lat = math.radians(45)
         lon = math.radians(-93)
-        time = dt.datetime(year=1995,month=11,day=18,hour=12,minute=46)
         r_geo = [-4400.594e3, 1932.87e3, 4760.712e3]
 
         r_lla_out = initialize_track.calc_sat_subpoint(lat, lon, r_geo)
@@ -276,6 +273,19 @@ class Test_calc_sat_subpoint(unittest.TestCase):
         self.assertAlmostEqual(r_lla[1],r_lla_out[1],1)
         self.assertGreaterEqual(r_lla_out[2],r_lla[2]-tol)
         self.assertLessEqual(r_lla_out[2],r_lla[2]+tol)
+
+class Test_get_look_angles(unittest.TestCase):
+    def test_function(self):
+        ref_coords = [math.radians(45),math.radians(-93)]
+        time = dt.datetime(year=1995, month=11, day=18, hour=12, minute=46)
+        sat_geo = np.array([[-4400.594e3], [1932.87e3], [4760.712e3]])
+
+        elev_out, az_out = initialize_track.get_look_angles(ref_coords, time, sat_geo)
+        elev = 81.52
+        az = 100.36
+
+        self.assertAlmostEqual(elev,math.degrees(elev_out),2)
+        self.assertAlmostEqual(az,math.degrees(az_out),2)
 
 if __name__ == '__main__':
     unittest.main()
