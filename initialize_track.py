@@ -12,6 +12,7 @@ import matlab.engine
 #################
 ### Functions ###
 #################
+
 def parse_rcfile(line):
     coords = line.split(',')[0:2]
 
@@ -165,18 +166,25 @@ def peri2geo(O, i, wp):
     Q = np.array([[q11, q12, q13], [q21, q22, q23], [q31, q32, q33]])
     return Q
 
-def calc_greenwich_sidereal(time):
-    ## Purpose: Calculate the greenwich sidereal time at a given time
+def calc_j0(time):
+    ## Purpose: Calculate the Julian Day number at a given time
 
     y = time.year
     m = time.month
     d = time.day
+
+    j0 = 367.0 * y - math.trunc((7.0 * (y + math.trunc((m + 9) / 12.0))) / 4.0) + math.trunc(
+        275.0 * m / 9.0) + d + 1721013.5
+    return j0
+
+def calc_greenwich_sidereal(time):
+    ## Purpose: Calculate the greenwich sidereal time at a given time
+
     hr = time.hour
     min = time.minute
     sec = time.second
 
-    j0 = 367.0 * y - math.trunc((7.0 * (y + math.trunc((m + 9) / 12.0))) / 4.0) + math.trunc(
-        275.0 * m / 9.0) + d + 1721013.5
+    j0 = calc_j0(time)
     T0 = (j0 - 2451545.0) / 36525.0
     thet_g0 = 100.4606184 + 36000.77004 * T0 + 0.000387933 * math.pow(T0, 2) - 2.583e-8 * math.pow(T0, 3)
 
@@ -372,6 +380,82 @@ def get_look_angles(ref_coords, time, sat_geo):
 
     return elev, az
 
+def calc_sun_pos(time):
+    ## Purpose: Calculate sun position in ECI
+
+    hr = time.hour
+    min = time.minute
+    sec = time.second
+
+    j0 = calc_j0(time)
+    UT = hr + min/60.0 + sec/3600.0
+    JD = j0 + UT/24.0
+
+    # n = JD - 2451545.0
+    # L = 280.460 + 0.9856474*n
+    # g = 357.528 + 0.9856003*n
+    #
+    # L = conv_ang(L, 'deg')
+    # g = conv_ang(g, 'deg')
+    #
+    # eclip_lon = math.radians(L + 1.915*math.sin(math.radians(g)) + 0.020*math.sin(math.radians(2*g)))
+    # eclip_lat = 0
+    # R = 1.00014 - 0.01671*math.cos(math.radians(g)) - 0.00014*math.cos(math.radians(2*g)) ##AU
+    #
+    # e = math.radians(23.439 - 0.0000004*n)
+    #
+    # eci_ra = math.atan2(math.cos(e)*math.sin(eclip_lon), math.cos(eclip_lon))
+    # eci_dec = math.asin(math.sin(e)*math.sin(eclip_lon))
+    #
+    # R = R * AU2M
+    # eci_x = R*math.cos(eci_dec)*math.cos(eci_ra)
+    # eci_y = R*math.cos(eci_dec)*math.sin(eci_ra)
+    # eci_z = R*math.sin(eci_ra)
+
+    T = (JD - 2451545.0) / 36525.0
+    lamb = 280.4606184 + 36000.77005361 * T  # deg
+    lamb = conv_ang(lamb, 'deg')
+    M = 357.5277233 + 35999.05034 * T  # deg
+    M = conv_ang(M, 'deg')
+
+    eclip_lon = lamb + 1.914666471 * math.sin(math.radians(M)) + 0.918994643 * math.sin(math.radians(2 * M))  # deg
+    eclip_lon = conv_ang(eclip_lon, 'deg')
+    e = 23.439291 - 0.0130042 * T  # deg
+    e = conv_ang(e, 'deg')
+
+    u_sun_eci_x = math.cos(math.radians(eclip_lon))
+    u_sun_eci_y = math.cos(math.radians(e)) * math.sin(math.radians(eclip_lon))
+    u_sun_eci_z = math.sin(math.radians(e)) * math.sin(math.radians(eclip_lon))
+
+    R = 1.000140612 - 0.016708617*math.cos(math.radians(M)) - 0.000139589*math.cos(math.radians(2*M)) ## AU
+    R = R * AU2M
+
+    eci_x = u_sun_eci_x * R
+    eci_y = u_sun_eci_y * R
+    eci_z = u_sun_eci_z * R
+
+    return [eci_x, eci_y, eci_z]
+
+def conv_ang(ang, coord_type):
+    ## Purpose: convert a given angle to the range 0 to 2pi
+    ##
+    ## Inputs: angle, coordinate type (radians or degrees)
+
+    sign = 1
+    if coord_type == 'deg':
+        ref = 360
+    else:
+        ref = 2*math.pi
+
+    if ang > 0:
+        sign = -1
+
+    while ang < 0 or ang > ref:
+        foo = ref*sign
+        ang += foo
+
+    return ang
+
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -384,6 +468,8 @@ WGS84_f = 1/298.257223563
 WGS84_b = WGS84_a*(1-WGS84_f)
 WGS84_w = 7292115e-11 #rad/s
 Re = 6378.37e3 # m
+AU2M = 149597870700
+Rs = 695700e3
 
 if __name__ == "__main__":
 
@@ -500,6 +586,7 @@ if __name__ == "__main__":
     prev_elev = 999
     lim = math.radians(10)
     table = []
+    vis_once = False
     for time in times:
         ## Define the time
         l_time = tp + datetime.timedelta(seconds=time)
@@ -535,16 +622,35 @@ if __name__ == "__main__":
         ## See if satellite is visible from ref coords (if given)
         if rc_file != None and rc_file != 'None':
             elev, az = get_look_angles(ref_coords, l_time, r_geo)
+            sun_eci = calc_sun_pos(l_time)
+            sun_eci = np.array([[sun_eci[0]], [sun_eci[1]], [sun_eci[2]]])
+            sun_elev, sun_az = get_look_angles(ref_coords, l_time, sun_eci)
             table.append([l_time, math.degrees(az), math.degrees(elev)])
 
-            if elev >= lim:
+            rho_s = sun_eci + r_geo
+            theta_e = math.asin(Re/np.linalg.norm(r_geo))
+            theta_s = math.asin(Rs/np.linalg.norm(rho_s))
+            theta = math.acos(np.dot(r_geo.T[0], rho_s.T[0])/np.linalg.norm(r_geo)/np.linalg.norm(rho_s))
+
+            if theta_e > theta_s and theta < (theta_e - theta_s):
+                umbral_eclipse = True
+            else:
+                umbral_eclipse = False
+
+            if sun_elev < math.radians(-6):
+                sun_down = True
+            else:
+                sun_down = False
+
+            if elev >= lim and umbral_eclipse == False and sun_down == True:
+                vis_once = True
                 vis_t.append(l_time)
                 vis_a.append(elev)
                 vis_lats.append(math.degrees(lat))
                 vis_lons.append(math.degrees(lon))
                 vis_az.append(math.degrees(az))
 
-            if elev < lim and prev_elev > lim and prev_elev != 999:
+            if elev < lim and prev_elev > lim and prev_elev != 999 and vis_once == True:
                 caption = "Visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to " + vis_t[
                     -1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(
                     round(math.degrees(max(vis_a)), 0)) + " and azimuth " + str(vis_az[0]) + " to " + str(vis_az[-1])
@@ -561,6 +667,7 @@ if __name__ == "__main__":
                 vis_lats = []
                 vis_lons = []
                 vis_az = []
+                vis_once = False
 
             prev_elev = elev
 

@@ -287,6 +287,63 @@ class Test_get_look_angles(unittest.TestCase):
         self.assertAlmostEqual(elev,math.degrees(elev_out),2)
         self.assertAlmostEqual(az,math.degrees(az_out),2)
 
+# class Test_calc_sun_pos(unittest.TestCase):
+#     def test_comparison(self):
+#         time = dt.datetime.now()
+#
+#         sun_eci = np.array(initialize_track.calc_sun_pos(time))
+#         j0 = initialize_track.calc_j0(time)
+#         UT = time.hour + time.minute/60.0 + time.second/3600.0
+#         JD = j0 + UT/24.0
+#
+#         T = (JD - 2451545.0)/36525.0
+#         lamb = 280.4606184 + 36000.77005361*T #deg
+#         lamb = initialize_track.conv_ang(lamb, 'deg')
+#         M = 357.5277233 + 35999.05034*T #deg
+#         M = initialize_track.conv_ang(M, 'deg')
+#         eclip_lon = lamb + 1.914666471*math.sin(math.radians(M)) + 0.918994643*math.sin(math.radians(2*M)) #deg
+#         eclip_lon = initialize_track.conv_ang(eclip_lon, 'deg')
+#         e = 23.439291 - 0.0130042*T #deg
+#         e = initialize_track.conv_ang(e, 'deg')
+#
+#         u_sun_eci_x = math.cos(math.radians(eclip_lon))
+#         u_sun_eci_y = math.cos(math.radians(e))*math.sin(math.radians(eclip_lon))
+#         u_sun_eci_z = math.sin(math.radians(e))*math.sin(math.radians(eclip_lon))
+#
+#         sun_eci_x2 = sun_eci[0]/np.linalg.norm(sun_eci)
+#         sun_eci_y2 = sun_eci[1]/np.linalg.norm(sun_eci)
+#         sun_eci_z2 = sun_eci[2]/np.linalg.norm(sun_eci)
+#
+#         self.assertAlmostEqual(u_sun_eci_x, sun_eci_x2, 2)
+#         self.assertAlmostEqual(u_sun_eci_y, sun_eci_y2, 2)
+#         self.assertAlmostEqual(u_sun_eci_z, sun_eci_z2, 2)
+
+class Test_conv_ang(unittest.TestCase):
+    def test_function(self):
+        ang = -15
+        res = initialize_track.conv_ang(ang, 'deg')
+        self.assertEqual(res, 345)
+
+        ang = 400
+        res = initialize_track.conv_ang(ang, 'deg')
+        self.assertEqual(res, 40)
+
+        ang = 900
+        res = initialize_track.conv_ang(ang, 'deg')
+        self.assertEqual(res, 180)
+
+        ang = math.radians(-100)
+        res = initialize_track.conv_ang(ang, 'rad')
+        self.assertEqual(res, math.radians(260))
+
+        ang = math.radians(361)
+        res = initialize_track.conv_ang(ang, 'rad')
+        self.assertAlmostEqual(res, math.radians(1), 2)
+
+        ang = math.radians(950)
+        res = initialize_track.conv_ang(ang, 'rad')
+        self.assertAlmostEqual(res, math.radians(230), 2)
+
 if __name__ == '__main__':
     unittest.main()
 
