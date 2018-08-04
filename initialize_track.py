@@ -5,6 +5,7 @@ import numpy as np
 import os
 import argparse
 import subprocess
+import pytz
 
 import matlab.engine
 
@@ -307,7 +308,7 @@ def lla2geo(ref_coords, time):
     return r_geo
 
 def geo2topo(theta, lat):
-    ## Purpose: Calculate transformation matrix from geocentric (ECI) to topocentric horizon
+    ## Purpose: Calculate transformation matrix from geocentric (ECI) to topocentric horizon frame
 
     ## Inputs:
     ##   theta: local sidereal time
@@ -324,8 +325,8 @@ def calc_sat_subpoint(lat,lon,r_geo):
     ## Purpose: Given geocentric satellite latitude and longitude, calculate geodetic latitude, longitude, and altitude
     ##
     ## Inputs:
-    ##   lat: geodetic latitude
-    ##   lon: geodetic longitude
+    ##   lat: geocentric latitude
+    ##   lon: geocentric longitude
     ##   r_geo: ECI coordinates
 
     e2 = 2*WGS84_f-math.pow(WGS84_f,2)
@@ -360,7 +361,7 @@ def get_look_angles(ref_coords, time, sat_geo):
 
     ## Get position of observer in ECI coordinates
     o_geo = lla2geo(ref_coords, time)
-    #geoc_ref_coords = calc_sat_subpoint(ref_coords[0], ref_coords[1], o_geo)
+    #geod_ref_coords = calc_sat_subpoint(ref_coords[0], ref_coords[1], o_geo)
     theta_g = calc_greenwich_sidereal(time)
     theta_l = theta_g + ref_coords[1]
 
@@ -488,6 +489,8 @@ if __name__ == "__main__":
     parser.add_argument("--ref_coord", '-r',
                     help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
+    parser.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
+    parser.add_argument("--list_timezone", action="store_true", help="List all available timezones for output and die")
     args = vars(parser.parse_args())
 
     ## Define input args
@@ -495,11 +498,23 @@ if __name__ == "__main__":
     ic_tle = args["tle"]
     end_time = args["end_time"]
     rc_file = args["ref_coord"]
+    tz = args['timezone']
+    print_tz = args['list_timezone']
+
+    ## If print_tz, output and exit
+    if print_tz:
+        tzs = pytz.all_timezones
+        print("Timezones:")
+        [print('  {}'.format(tz)) for tz in tzs]
+        os._exit(0)
+
+    loc_zone = pytz.timezone(tz)
+    utc = pytz.utc
 
     # print(ic_file)
     # print(ic_tle)
     # print(end_time)
-    #print(rc_file)
+    # print(rc_file)
 
     ## Start MATLAB
     eng = matlab.engine.start_matlab()
@@ -643,17 +658,21 @@ if __name__ == "__main__":
                 sun_down = False
 
             if elev >= lim and umbral_eclipse == False and sun_down == True:
+                foo = utc.localize(l_time)
+                loc_time = foo.astimezone(loc_zone)
+
                 vis_once = True
-                vis_t.append(l_time)
+                vis_t.append(loc_time)
                 vis_a.append(elev)
                 vis_lats.append(math.degrees(lat))
                 vis_lons.append(math.degrees(lon))
                 vis_az.append(math.degrees(az))
 
             if elev < lim and prev_elev > lim and prev_elev != 999 and vis_once == True:
-                caption = "Visible at reference location from " + vis_t[0].strftime("%Y-%m-%d %H:%M:%S") + " to " + vis_t[
-                    -1].strftime("%Y-%m-%d %H:%M:%S") + " with maximum elevation of " + str(
-                    round(math.degrees(max(vis_a)), 0)) + " and azimuth " + str(vis_az[0]) + " to " + str(vis_az[-1])
+                caption = "Visible at reference location from {} to {} with maximum elevation of {} deg and azimuth {} deg to {} deg".format(
+                    vis_t[0].strftime("%Y-%m-%d %H:%M:%S %Z"), vis_t[-1].strftime("%Y-%m-%d %H:%M:%S %Z"), int(math.degrees(max(vis_a))),
+                    int(vis_az[0]), int(vis_az[-1])
+                )
                 print(caption)
                 line1 = caption[:78]
                 line2 = caption[78:]
