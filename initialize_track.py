@@ -8,7 +8,7 @@ import subprocess
 import pytz
 
 import matlab.engine
-
+import fetch_tle
 
 #################
 ### Functions ###
@@ -489,6 +489,7 @@ if __name__ == "__main__":
     parser.add_argument("--ref_coord", '-r',
                     help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
+    parser.add_argument("--lookup_tle", '-l', help="Lookup the most recent TLE for the given SATCAT ID")
     parser.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
     parser.add_argument("--list_timezone", action="store_true", help="List all available timezones for output and die")
     args = vars(parser.parse_args())
@@ -500,6 +501,10 @@ if __name__ == "__main__":
     rc_file = args["ref_coord"]
     tz = args['timezone']
     print_tz = args['list_timezone']
+    tle_lookup = args['lookup_tle']
+
+    if tle_lookup is not None:
+        ic_tle = True
 
     ## If print_tz, output and exit
     if print_tz:
@@ -565,10 +570,13 @@ if __name__ == "__main__":
         print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
 
     else:
-        print("Now parsing input tle")
-        with open(ic_file, "r") as f:
-            line1 = f.readline()
-            line2 = f.readline()
+        if tle_lookup is not None:
+            line1, line2 = fetch_tle.get_tle(tle_lookup)
+        else:
+            print("Now parsing input tle")
+            with open(ic_file, "r") as f:
+                line1 = f.readline()
+                line2 = f.readline()
 
         sat_num, epoch, i0, O0, e0, wp0, M0, n = parse_tle(line1,line2)
         tp, h, P, dO, dwp, T = tle_calc_time_since_perigee(M0, e0, n, i0, epoch)
