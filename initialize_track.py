@@ -476,22 +476,24 @@ if __name__ == "__main__":
 
     ## Define argument parsing
     parser = argparse.ArgumentParser(description="Process initial conditions")
-    group = parser.add_mutually_exclusive_group()
+    upper_group = parser.add_mutually_exclusive_group()
+    group = upper_group.add_mutually_exclusive_group()
     group.add_argument("--kep", '-k', dest="tle", action="store_false",
                    default="true",
                    help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)\n  semi-major axis (m)\n  eccentricity\n  inclination (deg)\n  true anomaly (deg)\n  RAAN (deg)\n  argument of perigee (deg)\n")
     group.add_argument("--tle", '-t', dest="tle", action="store_true",
                    default="true", help="Initial conditions are in the tle.txt format (default: tle)\n")
-    parser.add_argument('--init_cond', '-i', metavar="ic_file",
-                    help="file holding initial conditions", required=True)
-    parser.add_argument("--end_time", '-e', dest="end_time", default="T",
+    upper_group.add_argument('--init_cond', '-i', metavar="ic_file",
+                    help="file holding initial conditions")
+    upper_group.add_argument("--end_time", '-e', dest="end_time", default="T",
                     help="Number of minutes to simulate the ground track. Default: one revolution")
-    parser.add_argument("--ref_coord", '-r',
+    upper_group.add_argument("--ref_coord", '-r',
                     help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
-    parser.add_argument("--lookup_tle", '-l', help="Lookup the most recent TLE for the given SATCAT ID")
-    parser.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
-    parser.add_argument("--list_timezone", action="store_true", help="List all available timezones for output and die")
+    upper_group.add_argument("--lookup_tle", '-l',
+                             help="Lookup the most recent TLE for the given SATCAT ID. Must provide SATCAT credentials as env variables, SATCAT_USER and SATCAT_PASSWORD")
+    upper_group.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
+    parser.add_argument("--list_timezones", action="store_true", help="List all available timezones for output and die")
     args = vars(parser.parse_args())
 
     ## Define input args
@@ -500,11 +502,14 @@ if __name__ == "__main__":
     end_time = args["end_time"]
     rc_file = args["ref_coord"]
     tz = args['timezone']
-    print_tz = args['list_timezone']
+    print_tz = args['list_timezones']
     tle_lookup = args['lookup_tle']
 
     if tle_lookup is not None:
         ic_tle = True
+
+    if ic_file is None and tle_lookup is None and print_tz is False:
+        raise ValueError('Must provide either init_cond file or SATCAT ID for TLE lookup')
 
     ## If print_tz, output and exit
     if print_tz:
