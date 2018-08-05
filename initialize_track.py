@@ -46,7 +46,7 @@ def ic_calc_time_since_perigee(e,w,a,epoch):
 
     ## Define times
     t0 = datetime.datetime.strptime(epoch, "%Y-%m-%d %H:%M:%S")
-    print("Epoch: " + str(t0))
+    print("Epoch: {}".format(t0))
     tp = t0 - datetime.timedelta(seconds=dt)
 
     return tp, h, P, T
@@ -64,7 +64,7 @@ def parse_tle(line1,line2):
     n = float(line2[52:63]) * 2 * math.pi / 86400  # rad/s
 
     ## Define times
-    if int(epoch_year) > datetime.datetime.now().year:
+    if int(epoch_year) > int(datetime.datetime.now().strftime('%y')):
         year = "19" + str(epoch_year)
     else:
         year = "20" + str(epoch_year)
@@ -97,7 +97,7 @@ def tle_calc_time_since_perigee(M, e, n, i, epoch):
     P = math.pow(h, 2) / Mew
 
     t0 = datetime.datetime.strptime(epoch, "%Y-%j %H:%M:%S.%f")
-    print("Epoch: " + str(t0))
+    print("Epoch: {}Z".format(t0))
     tp = t0 - datetime.timedelta(seconds=dt)
 
     return tp, h, P, dO, dwp, T
@@ -471,28 +471,42 @@ WGS84_w = 7292115e-11 #rad/s
 Re = 6378.37e3 # m
 AU2M = 149597870700
 Rs = 695700e3
+loop_dur = 3 #Number of days to propagate TLE forward
+
+## Define favorite sat cat ids
+favorites = {
+    'iss': 25544, #International Space Station
+    'wv01': 32060, #Worldview-1
+    'wv02': 35946, #Worldview-2
+    'wv03': 40115, #Worldview-3
+    'wv04': 41848, #Worldview 4
+    'ge01': 33331, #Geoeye-1
+    'tina': 43216, #Tintin A
+    'tinb': 43217, #Tintin B
+    'road': 43205, #Roadster
+}
 
 if __name__ == "__main__":
 
     ## Define argument parsing
     parser = argparse.ArgumentParser(description="Process initial conditions")
-    upper_group = parser.add_mutually_exclusive_group()
-    group = upper_group.add_mutually_exclusive_group()
+    group2 = parser.add_mutually_exclusive_group()
+    group = parser.add_mutually_exclusive_group()
     group.add_argument("--kep", '-k', dest="tle", action="store_false",
                    default="true",
                    help="Initial conditions are in the ic.kep format (default: tle):\n  epoch (UTC)\n  semi-major axis (m)\n  eccentricity\n  inclination (deg)\n  true anomaly (deg)\n  RAAN (deg)\n  argument of perigee (deg)\n")
     group.add_argument("--tle", '-t', dest="tle", action="store_true",
                    default="true", help="Initial conditions are in the tle.txt format (default: tle)\n")
-    upper_group.add_argument('--init_cond', '-i', metavar="ic_file",
-                    help="file holding initial conditions")
-    upper_group.add_argument("--end_time", '-e', dest="end_time", default="T",
+    group2.add_argument('--init_cond', '-i', metavar="ic_file",
+                    help="file holding initial conditions. Require this argument or lookup_tle.")
+    group2.add_argument("--lookup_tle", '-l',
+                             help="Lookup the most recent TLE for the given SATCAT ID. Must provide SATCAT credentials as env variables, SATCAT_USER and SATCAT_PASSWORD. Required this or init_cond.")
+    parser.add_argument("--end_time", '-e', dest="end_time", default="T",
                     help="Number of minutes to simulate the ground track. Default: one revolution")
-    upper_group.add_argument("--ref_coord", '-r',
+    parser.add_argument("--ref_coord", '-r',
                     help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
-    upper_group.add_argument("--lookup_tle", '-l',
-                             help="Lookup the most recent TLE for the given SATCAT ID. Must provide SATCAT credentials as env variables, SATCAT_USER and SATCAT_PASSWORD")
-    upper_group.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
+    parser.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
     parser.add_argument("--list_timezones", action="store_true", help="List all available timezones for output and die")
     args = vars(parser.parse_args())
 
@@ -509,7 +523,7 @@ if __name__ == "__main__":
         ic_tle = True
 
     if ic_file is None and tle_lookup is None and print_tz is False:
-        raise ValueError('Must provide either init_cond file or SATCAT ID for TLE lookup')
+        parser.error('Must provide either init_cond file or SATCAT ID for TLE lookup')
 
     ## If print_tz, output and exit
     if print_tz:
@@ -572,10 +586,13 @@ if __name__ == "__main__":
 
         ## Calculate time since perigee passage
         tp, h, P, T = ic_calc_time_since_perigee(e0,w0,a0,epoch)
-        print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
+        print("Time of perigee passage: {}Z".format(tp.strftime("%Y-%m-%d %H:%M:%S")))
 
     else:
         if tle_lookup is not None:
+            if tle_lookup.lower() in favorites.keys():
+                tle_lookup = favorites[tle_lookup.lower()]
+
             line1, line2 = fetch_tle.get_tle(tle_lookup)
         else:
             print("Now parsing input tle")
@@ -585,7 +602,7 @@ if __name__ == "__main__":
 
         sat_num, epoch, i0, O0, e0, wp0, M0, n = parse_tle(line1,line2)
         tp, h, P, dO, dwp, T = tle_calc_time_since_perigee(M0, e0, n, i0, epoch)
-        print("Time of perigee passage: " + tp.strftime("%Y-%m-%d %H:%M:%S"))
+        print("Time of perigee passage: {}Z".format(tp.strftime("%Y-%m-%d %H:%M:%S")))
 
     #################################################################
     ### 03. Main loop: step through times and get a lat/lon point ###
@@ -602,7 +619,7 @@ if __name__ == "__main__":
         print("Generating ground track for " + end_time + " minutes.")
         end_time = float(end_time) * 60
 
-    loop_time = 86400 * 3
+    loop_time = 86400 * loop_dur
     N = int(loop_time / 60)
     times = np.linspace(0, loop_time, N)
     vis_t = []
@@ -615,6 +632,7 @@ if __name__ == "__main__":
     lim = math.radians(10)
     table = []
     vis_once = False
+    num_passes = 0
     for time in times:
         ## Define the time
         l_time = tp + datetime.timedelta(seconds=time)
@@ -648,7 +666,7 @@ if __name__ == "__main__":
             longs.append(lon * 180 / math.pi)
 
         ## See if satellite is visible from ref coords (if given)
-        if rc_file != None and rc_file != 'None':
+        if rc_file is not None and rc_file != 'None':
             elev, az = get_look_angles(ref_coords, l_time, r_geo)
             sun_eci = calc_sun_pos(l_time)
             sun_eci = np.array([[sun_eci[0]], [sun_eci[1]], [sun_eci[2]]])
@@ -700,6 +718,7 @@ if __name__ == "__main__":
                 vis_lons = []
                 vis_az = []
                 vis_once = False
+                num_passes += 1
 
             prev_elev = elev
 
@@ -707,6 +726,12 @@ if __name__ == "__main__":
     mat_lats = matlab.double(lats)
     mat_lons = matlab.double(longs)
     eng.plot_track(mat_lats, mat_lons, matlab.double([]), 'ground_track.jpg', '', '', nargout=0)
+
+    if rc_file != 'None':
+        print('Run finished with {} passes found in the next {} days'.format(num_passes, loop_dur))
+
+    print('Inclination: {}'.format(math.degrees(i0)))
+    print('Max latitude: {}'.format(max(lats)))
 
     ## Print Table
     if len(table) > 0:

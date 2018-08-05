@@ -19,7 +19,7 @@ if length(inputLong) > 0 && length(inputLat) > 0
 end
 
 if length(refcoords) > 1
-    p3 = plotm(refcoords(1),refcoords(2),'xr');
+    p3 = plotm(refcoords(1),refcoords(2),'xr','DisplayName','Observation Location');
 end
 
 title({line1,line2});

@@ -33,6 +33,9 @@ def get_tle(cat_id):
     sat_cookies = r.cookies
     r = requests.get(QUERY_URL.format(cat_id), cookies=sat_cookies).json()
 
+    if len(r) == 0:
+        raise Exception('No results found for this object!')
+
     line1 = r[0]['TLE_LINE1']
     line2 = r[0]['TLE_LINE2']
 
