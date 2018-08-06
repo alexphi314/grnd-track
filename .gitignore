@@ -7,3 +7,7 @@ pass*
 Plots/*
 *.secret
 table.lst
+.idea*
+bin
+include
+lib
