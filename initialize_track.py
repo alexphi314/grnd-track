@@ -7,8 +7,8 @@ import argparse
 import subprocess
 import pytz
 
-import matlab.engine
 import fetch_tle
+import plot_track
 
 #################
 ### Functions ###
@@ -540,10 +540,6 @@ if __name__ == "__main__":
     # print(end_time)
     # print(rc_file)
 
-    ## Start MATLAB
-    eng = matlab.engine.start_matlab()
-    eng.addpath(os.getcwd() + "/")
-
     if rc_file is not None and rc_file != 'None':
         with open(rc_file, "r") as f:
             line = f.readline()
@@ -705,13 +701,10 @@ if __name__ == "__main__":
                     int(vis_az[0]), int(vis_az[-1])
                 )
                 print(caption)
-                line1 = caption[:78]
-                line2 = caption[78:]
+                caption = caption[:78] + '\n' + caption[78:]
                 name = 'Plots/' + vis_t[0].strftime('%Y-%m-%dT%H:%M:%S') + '_' + vis_t[-1].strftime(
-                    '%Y-%m-%dT%H:%M:%S') + '.jpg'
-                eng.plot_track(matlab.double(vis_lats), matlab.double(vis_lons),
-                               matlab.double([math.degrees(ref_coords[0]), math.degrees(ref_coords[1])]), name, line1,
-                               line2, nargout=0)
+                    '%Y-%m-%dT%H:%M:%S') + '.png'
+                #plot_track.plot(vis_lats, vis_lons, [math.degrees(ref_coords[0]), math.degrees(ref_coords[1])], name, caption)
                 vis_t = []
                 vis_a = []
                 vis_lats = []
@@ -723,9 +716,7 @@ if __name__ == "__main__":
             prev_elev = elev
 
     ## Plot
-    mat_lats = matlab.double(lats)
-    mat_lons = matlab.double(longs)
-    eng.plot_track(mat_lats, mat_lons, matlab.double([]), 'ground_track.jpg', '', '', nargout=0)
+    plot_track.plot(lats, longs, [], 'ground_track.png', '')
 
     if rc_file != 'None':
         print('Run finished with {} passes found in the next {} days'.format(num_passes, loop_dur))
