@@ -6,9 +6,11 @@ import os
 import argparse
 import subprocess
 import pytz
-
-import fetch_tle
-import plot_track
+import requests
+import matplotlib
+matplotlib.use('pdf')
+import matplotlib.pyplot as plt
+from mpl_toolkits.basemap import Basemap
 
 #################
 ### Functions ###
@@ -75,12 +77,13 @@ def parse_tle(line1,line2):
     frac, sec = math.modf(frac * 60)
 
     if doy < 10:
-        doy = "00" + str(doy)
+        doy = "00" + str(int(doy))
     elif doy < 100:
-        doy = "0" + str(doy)
+        doy = "0" + str(int(doy))
+    else:
+        doy = int(doy)
 
-    epoch = str(year) + "-" + str(int(doy)) + " " + str(int(hour)) + ":" + str(int(min)) + ":" + str(
-        int(sec)) + "." + str(frac)[2:6]
+    epoch = '{}-{} {}:{}:{}.{}'.format(year, doy, int(hour), int(min), int(sec), str(frac)[2:6])
 
     return sat_num, epoch, i0, O0, e0, wp0, M0, n
 
@@ -457,6 +460,101 @@ def conv_ang(ang, coord_type):
 
     return ang
 
+def get_tle(cat_id):
+    """
+    Given cat id, return the most recent TLE for that object
+
+    :param cat_id: String or double
+    :return: TLE string
+    """
+
+    ## Get user and pass
+    username = os.getenv('SATCAT_USER')
+    password = os.getenv('SATCAT_PASSWORD')
+    if username is None or password is None:
+        raise Exception('SATCAT_USER and SATCAT_PASSWORD must be defined credentials in environment!')
+
+    ## Send login request
+    payload = {'identity': username, 'password': password}
+
+    r = requests.post(LOGIN_URL, data=payload)
+    if r.status_code != 200:
+        raise Exception('Issue connecting to space-track login. Status code: {}'.format(r.status_code))
+
+    del password
+    del payload
+
+    ## Request TLEs
+    sat_cookies = r.cookies
+    r = requests.get(QUERY_URL.format(cat_id), cookies=sat_cookies).json()
+
+    if len(r) == 0:
+        raise Exception('No results found for this object!')
+
+    line1 = r[0]['TLE_LINE1']
+    line2 = r[0]['TLE_LINE2']
+
+    print('Found TLE for object {}:\n{}\n{}'.format(cat_id, line1, line2))
+
+    ## Logout
+    r = requests.get(LOGOUT_URL, cookies=sat_cookies)
+    return line1, line2
+
+def plot(inputLat,inputLong,refcoords,name,title):
+    """
+    Generate a plot of the ground track
+
+    :param inputLat: array of latitudes to plot (deg)
+    :param inputLong: array of longitudes to plot (deg)
+    :param refcoords: lat/lon pair representing observation location (deg)
+    :param name: output file name
+    :param line1: first line of plot title
+    :param line2: second line of plot title
+    :return:
+    """
+
+    fig = plt.figure()
+    m = Basemap(projection='robin', lon_0=0, resolution='i')
+
+    m.drawcoastlines()
+    m.drawparallels(np.arange(-90,90,30), labels=[1,1,0,0])
+    m.drawmeridians(np.arange(0,360,60), labels=[0,0,1,1])
+
+    if len(inputLat) > 0 and len(inputLong) > 0:
+
+        split_points = [0]
+        for indx, lon in enumerate(inputLong):
+            if indx == 0:
+                continue
+
+            if inputLong[indx-1] < 180 and inputLong[indx] > 180:
+                split_points.append(indx)
+
+        for indx, split_point in enumerate(split_points):
+            if indx == 0:
+                continue
+
+            lon = inputLong[split_points[indx-1]:split_point]
+            lat = inputLat[split_points[indx-1]:split_point]
+
+            x, y = m(lon, lat)
+            m.plot(x, y, linewidth=1.5, color='b')
+
+        lon = inputLong[split_points[-1]:]
+        lat = inputLat[split_points[-1]:]
+        x, y = m(lon, lat)
+        m.plot(x, y, linewidth=1.5, color='b')
+
+        m.scatter(inputLong[0], inputLat[0], latlon=True, label='Starting Position')
+        m.scatter(inputLong[-1], inputLat[-1], latlon=True, c='r', label='Ending Position')
+
+    if len(refcoords) > 1:
+        m.scatter(refcoords[1], refcoords[0], latlon=True, c='r', marker='x', label='Observation Location')
+
+    plt.legend(loc='upper right', bbox_to_anchor=(1.1,1.2))
+    plt.title(title)
+    fig.savefig(name, dpi=150)
+
 #####################################################
 ### 01. Initializing variables and getting inputs ###
 #####################################################
@@ -472,6 +570,11 @@ Re = 6378.37e3 # m
 AU2M = 149597870700
 Rs = 695700e3
 loop_dur = 3 #Number of days to propagate TLE forward
+
+## Space Track URLs
+QUERY_URL = 'https://www.space-track.org/basicspacedata/query/class/tle_latest/NORAD_CAT_ID/{}/orderby/ORDINAL asc/metadata/false'
+LOGIN_URL = 'https://www.space-track.org/ajaxauth/login'
+LOGOUT_URL = 'https://www.space-track.org/ajaxauth/logout'
 
 ## Define favorite sat cat ids
 favorites = {
@@ -504,10 +607,13 @@ if __name__ == "__main__":
     parser.add_argument("--end_time", '-e', dest="end_time", default="T",
                     help="Number of minutes to simulate the ground track. Default: one revolution")
     parser.add_argument("--ref_coord", '-r',
-                    help="file holding reference coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
+                    help="file holding observation coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
-    parser.add_argument("--timezone", '-tz', help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
+    parser.add_argument("--timezone", '-tz',
+                        help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')
     parser.add_argument("--list_timezones", action="store_true", help="List all available timezones for output and die")
+    parser.add_argument('--plot_passes', '-p', action="store_true",
+                        help="Plot the visible overhead passes above the reference coordinates")
     args = vars(parser.parse_args())
 
     ## Define input args
@@ -518,12 +624,16 @@ if __name__ == "__main__":
     tz = args['timezone']
     print_tz = args['list_timezones']
     tle_lookup = args['lookup_tle']
+    plot_pass = args['plot_passes']
 
     if tle_lookup is not None:
         ic_tle = True
 
     if ic_file is None and tle_lookup is None and print_tz is False:
         parser.error('Must provide either init_cond file or SATCAT ID for TLE lookup')
+
+    if plot_pass is True and rc_file == 'None':
+        parser.error('Must supply observation coordinates to plot visible passes')
 
     ## If print_tz, output and exit
     if print_tz:
@@ -589,7 +699,7 @@ if __name__ == "__main__":
             if tle_lookup.lower() in favorites.keys():
                 tle_lookup = favorites[tle_lookup.lower()]
 
-            line1, line2 = fetch_tle.get_tle(tle_lookup)
+            line1, line2 = get_tle(tle_lookup)
         else:
             print("Now parsing input tle")
             with open(ic_file, "r") as f:
@@ -610,9 +720,13 @@ if __name__ == "__main__":
 
     if end_time == "T":
         end_time = T
-        print("Generating ground track for one revolution")
+        print("Generating ground track for {} to {}"
+              .format(tp.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                     (tp + datetime.timedelta(seconds=T)).strftime('%Y-%m-%dT%H:%M:%S Z')))
     else:
-        print("Generating ground track for " + end_time + " minutes.")
+        print("Generating ground track for " + end_time + " minutes, from {} to {}"
+              .format(tp.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                      (tp + datetime.timedelta(minutes=end_time)).strftime('%Y-%m-%dT%H:%M:%SZ')))
         end_time = float(end_time) * 60
 
     loop_time = 86400 * loop_dur
@@ -662,7 +776,7 @@ if __name__ == "__main__":
             longs.append(lon * 180 / math.pi)
 
         ## See if satellite is visible from ref coords (if given)
-        if rc_file is not None and rc_file != 'None':
+        if rc_file != 'None' and (datetime.datetime.now() - tp).total_seconds() < loop_time:
             elev, az = get_look_angles(ref_coords, l_time, r_geo)
             sun_eci = calc_sun_pos(l_time)
             sun_eci = np.array([[sun_eci[0]], [sun_eci[1]], [sun_eci[2]]])
@@ -704,7 +818,8 @@ if __name__ == "__main__":
                 caption = caption[:78] + '\n' + caption[78:]
                 name = 'Plots/' + vis_t[0].strftime('%Y-%m-%dT%H:%M:%S') + '_' + vis_t[-1].strftime(
                     '%Y-%m-%dT%H:%M:%S') + '.png'
-                #plot_track.plot(vis_lats, vis_lons, [math.degrees(ref_coords[0]), math.degrees(ref_coords[1])], name, caption)
+                if plot_pass:
+                    plot(vis_lats, vis_lons, [math.degrees(ref_coords[0]), math.degrees(ref_coords[1])], name, caption)
                 vis_t = []
                 vis_a = []
                 vis_lats = []
@@ -716,13 +831,14 @@ if __name__ == "__main__":
             prev_elev = elev
 
     ## Plot
-    plot_track.plot(lats, longs, [], 'ground_track.png', '')
+    plot(lats, longs, [], 'ground_track.png', '')
+    print('Generated ground track plot, {}'.format(os.getenv('PWD') + '/ground_track.png'))
 
-    if rc_file != 'None':
+    if rc_file != 'None' and (datetime.datetime.now() - tp).total_seconds() < loop_time:
         print('Run finished with {} passes found in the next {} days'.format(num_passes, loop_dur))
 
-    print('Inclination: {}'.format(math.degrees(i0)))
-    print('Max latitude: {}'.format(max(lats)))
+        if plot_pass:
+            print('Visible passes plotted at {}'.format(os.getenv('PWD')+'/Plots'))
 
     ## Print Table
     if len(table) > 0:
