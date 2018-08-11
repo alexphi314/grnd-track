@@ -21,6 +21,8 @@ argument of perigee (deg)
 To input a TLE, supply a file with the TLE, or supply a NORAD satellite identifier, and the script will fetch the most
 recent TLE from space-track.org.
 
+Example initial condition files are ex_ic.kep and ex_ic.tle.
+
 ## Getting observable passes
 
 To view observable passes, you must supply the observation coordinates in a file. Use the following format:
@@ -30,6 +32,8 @@ To view observable passes, you must supply the observation coordinates in a file
 
 Given that the initial conditions are sourced from TLEs, observable passes will only be generated for the next three days,
 by default.
+
+Example observation coordinates file is ex_rc.txt
 
 ## Viewing output
 
