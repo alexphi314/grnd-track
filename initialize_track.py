@@ -603,11 +603,11 @@ if __name__ == "__main__":
     group2.add_argument('--init_cond', '-i', metavar="ic_file",
                     help="file holding initial conditions. Require this argument or lookup_tle.")
     group2.add_argument("--lookup_tle", '-l',
-                             help="Lookup the most recent TLE for the given SATCAT ID. Must provide SATCAT credentials as env variables, SATCAT_USER and SATCAT_PASSWORD. Required this or init_cond.")
+                             help="Lookup the most recent TLE for the given SATCAT ID. Must provide SATCAT credentials as env variables, SATCAT_USER and SATCAT_PASSWORD. Require this or init_cond.")
     parser.add_argument("--end_time", '-e', dest="end_time", default="T",
                     help="Number of minutes to simulate the ground track. Default: one revolution")
     parser.add_argument("--ref_coord", '-r',
-                    help="file holding observation coordinates. Format: LAT (N), LON (E), ALT (m). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
+                    help="file holding observation coordinates. Format: LAT (N), LON (E). For example, Denver would be: 39-45-43, -104-52-52 (DMS)",
                     default="None")
     parser.add_argument("--timezone", '-tz',
                         help='Timezone to output observation windows in, i.e. US/Mountain. Default: UTC', default='utc')

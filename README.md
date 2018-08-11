@@ -1,0 +1,40 @@
+## Installation
+
+Python modules are defined in requirements.txt. Basemap is an extension of matplotlib that enables ground track plotting, 
+requiring the GEOS library. For installation instructions, see https://matplotlib.org/basemap/users/installing.html.
+
+## Running
+
+In order to generate a ground track, run _initialize_track.py_. To see all options:
+`python initialize_track -h`.
+
+Initial conditions are required. To input Keplerian orbit elements, write a file in the following format:
+
+epoch (UTC)
+semi-major axis (m)
+eccentricity
+inclination (deg)
+true anomaly (deg)
+RAAN (deg)
+argument of perigee (deg)
+
+To input a TLE, supply a file with the TLE, or supply a NORAD satellite identifier, and the script will fetch the most
+recent TLE from space-track.org.
+
+## Getting observable passes
+
+To view observable passes, you must supply the observation coordinates in a file. Use the following format:
+<LAT (N)> <LON (E)>, in DMS
+`39-45-43, -104-52-52` represents 39˚45'43'' N, -104˚52'52''E
+
+Given that the initial conditions are sourced from TLEs, observable passes will only be generated for the next three days,
+by default.
+
+## Viewing output
+
+The reference ground track will be saved in the base project directory at _ground_track.png_. If specified, the visible 
+pass plots will be found in the Plots/ folder.
+
+
+
+
