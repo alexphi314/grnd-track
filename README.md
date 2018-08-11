@@ -11,17 +11,11 @@ In order to generate a ground track, run _initialize_track.py_. To see all optio
 Initial conditions are required. To input Keplerian orbit elements, write a file in the following format:
 
 epoch (UTC)
-
 semi-major axis (m)
-
 eccentricity
-
 inclination (deg)
-
 true anomaly (deg)
-
 RAAN (deg)
-
 argument of perigee (deg)
 
 To input a TLE, supply a file with the TLE, or supply a NORAD satellite identifier, and the script will fetch the most
@@ -32,7 +26,6 @@ recent TLE from space-track.org.
 To view observable passes, you must supply the observation coordinates in a file. Use the following format:
 
 <LAT (N)> <LON (E)>, in DMS
-
 `39-45-43, -104-52-52` represents 39˚45'43'' N, -104˚52'52''E
 
 Given that the initial conditions are sourced from TLEs, observable passes will only be generated for the next three days,
