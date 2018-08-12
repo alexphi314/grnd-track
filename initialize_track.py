@@ -500,7 +500,7 @@ def get_tle(cat_id):
     r = requests.get(LOGOUT_URL, cookies=sat_cookies)
     return line1, line2
 
-def plot(inputLat,inputLong,refcoords,name,title):
+def plot(inputLat,inputLong,refcoords,name,title, y_val):
     """
     Generate a plot of the ground track
 
@@ -552,7 +552,7 @@ def plot(inputLat,inputLong,refcoords,name,title):
         m.scatter(refcoords[1], refcoords[0], latlon=True, c='r', marker='x', label='Observation Location')
 
     plt.legend(loc='upper right', bbox_to_anchor=(1.1,1.2))
-    plt.title(title)
+    plt.title(title, y=y_val)
     fig.savefig(name, dpi=150)
 
 #####################################################
@@ -720,13 +720,14 @@ if __name__ == "__main__":
 
     if end_time == "T":
         end_time = T
-        print("Generating ground track for {} to {}"
-              .format(tp.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                     (tp + datetime.timedelta(seconds=T)).strftime('%Y-%m-%dT%H:%M:%S Z')))
+        title = "Ground track from {} to {}".format(tp.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                     (tp + datetime.timedelta(seconds=T)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+        print(title)
     else:
-        print("Generating ground track for " + end_time + " minutes, from {} to {}"
-              .format(tp.strftime('%Y-%m-%dT%H:%M:%SZ'),
-                      (tp + datetime.timedelta(minutes=end_time)).strftime('%Y-%m-%dT%H:%M:%SZ')))
+        end_time = float(end_time)
+        title = "Ground track for {} minutes, \nfrom {} to {}".format(end_time,
+            tp.strftime('%Y-%m-%dT%H:%M:%SZ'), (tp + datetime.timedelta(minutes=end_time)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+        print(title)
         end_time = float(end_time) * 60
 
     loop_time = 86400 * loop_dur
@@ -810,16 +811,15 @@ if __name__ == "__main__":
                 vis_az.append(math.degrees(az))
 
             if elev < lim and prev_elev > lim and prev_elev != 999 and vis_once == True:
-                caption = "Visible at reference location from {} to {} with maximum elevation of {} deg and azimuth {} deg to {} deg".format(
+                caption = "Visible from {} to {} \nwith maximum elevation of {} deg and azimuth {} deg to {} deg".format(
                     vis_t[0].strftime("%Y-%m-%d %H:%M:%S %Z"), vis_t[-1].strftime("%Y-%m-%d %H:%M:%S %Z"), int(math.degrees(max(vis_a))),
                     int(vis_az[0]), int(vis_az[-1])
                 )
                 print(caption)
-                caption = caption[:78] + '\n' + caption[78:]
                 name = 'Plots/' + vis_t[0].strftime('%Y-%m-%dT%H:%M:%S') + '_' + vis_t[-1].strftime(
                     '%Y-%m-%dT%H:%M:%S') + '.png'
                 if plot_pass:
-                    plot(vis_lats, vis_lons, [math.degrees(ref_coords[0]), math.degrees(ref_coords[1])], name, caption)
+                    plot(vis_lats, vis_lons, [math.degrees(ref_coords[0]), math.degrees(ref_coords[1])], name, caption, 1.2)
                 vis_t = []
                 vis_a = []
                 vis_lats = []
@@ -831,7 +831,7 @@ if __name__ == "__main__":
             prev_elev = elev
 
     ## Plot
-    plot(lats, longs, [], 'ground_track.png', '')
+    plot(lats, longs, [], 'ground_track.png', title, 1.2)
     print('Generated ground track plot, {}'.format(os.getenv('PWD') + '/ground_track.png'))
 
     if rc_file != 'None' and (datetime.datetime.now() - tp).total_seconds() < loop_time:

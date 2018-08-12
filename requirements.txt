@@ -1,4 +1,4 @@
-basemap==1.1.0
+#basemap==1.1.0 ## Install at https://matplotlib.org/basemap/users/installing.html
 certifi==2018.4.16
 chardet==3.0.4
 cycler==0.10.0
